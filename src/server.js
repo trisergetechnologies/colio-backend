@@ -112,10 +112,10 @@ process.on('SIGTERM', async () => {
   console.log(chalk.yellow('SIGTERM received. Shutting down gracefully...'));
   
   // Close Socket.io connections
-  if (socketHandler.io) {
-    console.log(chalk.gray('Closing Socket.io connections...'));
-    socketHandler.io.close();
-  }
+  // if (socketHandler.io) {
+  //   console.log(chalk.gray('Closing Socket.io connections...'));
+  //   socketHandler.io.close();
+  // }
   
   // Close HTTP server
   httpServer.close(() => {
@@ -128,10 +128,10 @@ process.on('SIGINT', async () => {
   console.log(chalk.yellow('\nSIGINT received. Shutting down gracefully...'));
   
   // Close Socket.io connections
-  if (socketHandler.io) {
-    console.log(chalk.gray('Closing Socket.io connections...'));
-    socketHandler.io.close();
-  }
+  // if (socketHandler.io) {
+  //   console.log(chalk.gray('Closing Socket.io connections...'));
+  //   socketHandler.io.close();
+  // }
   
   // Close HTTP server
   httpServer.close(() => {
