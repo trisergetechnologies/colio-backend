@@ -7,7 +7,8 @@ import userRoutes from './user/user.routes.js';
 import customerRoutes from './customer/customer.routes.js';
 import consultantRoutes from './consultant/consultant.routes.js';
 import sessionRoutes from './session/session.routes.js';
-import agoraRoutes from './agora/agora.routes.js'
+import agoraRoutes from './agora/agoraRoutes.js'
+import communicationRoutes from './agora/communicationRoutes.js'
 
 const router = express.Router();
 
@@ -51,6 +52,7 @@ router.use('/customer', customerRoutes);   // /api/customer/*
 router.use('/consultant', consultantRoutes); // /api/consultant/*
 router.use('/session', sessionRoutes);     // /api/session/*
 router.use('/agora', agoraRoutes);        // /api/agora/*
+router.use('/communication', communicationRoutes); // /api/communication/*
 
 
 export default router;
