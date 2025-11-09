@@ -7,7 +7,7 @@ import { buildChatTokenForAccount, buildRtcTokenWithAccount } from '../../servic
  */
 export const getChatToken = async (req, res) => {
   try {
-    const userId = req.user._id.toString();
+    const userId = req.user.userId.toString();
     const token = buildChatTokenForAccount(userId);
     res.json({ ok: true, agoraAppId: process.env.AGORA_APP_ID, chatToken: token, userId });
   } catch (err) {
@@ -23,7 +23,7 @@ export const getChatToken = async (req, res) => {
  */
 export const getRtcTokenGeneric = async (req, res) => {
   try {
-    const userId = req.user._id.toString();
+    const userId = req.user.userId.toString();
     const { channelName } = req.body;
     if (!channelName) return res.status(400).json({ error: 'channelName required' });
 

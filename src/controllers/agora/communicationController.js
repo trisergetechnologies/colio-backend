@@ -13,7 +13,7 @@ import mongoose from 'mongoose';
  */
 export const startSession = async (req, res) => {
   try {
-    const customerId = req.user._id;
+    const customerId = req.user.userId;
     const { type, consultantId } = req.body;
 
     if (!['chat', 'voice', 'video'].includes(type)) {
@@ -115,7 +115,7 @@ export const startSession = async (req, res) => {
  */
 export const getRtcToken = async (req, res) => {
   try {
-    const userId = req.user._id.toString();
+    const userId = req.user.userId.toString();
     const { sessionId } = req.body;
 
     if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
@@ -160,7 +160,7 @@ export const getRtcToken = async (req, res) => {
  */
 export const endSession = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const { sessionId, autoEnded = false } = req.body;
 
     if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
