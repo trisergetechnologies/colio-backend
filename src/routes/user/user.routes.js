@@ -20,6 +20,7 @@ import {
   getSessionDetails, 
   endSession 
 } from '../../controllers/session/session.controller.js';
+import { updatePushToken } from '../../controllers/user/notification.controller.js';
 
 const router = express.Router();
 
@@ -55,5 +56,7 @@ router.get('/sessions', getUserSessions);
 router.get('/session/:id', getSessionDetails);
 
 router.post('/session/:id/end', endSession);
+
+router.post('/push-token', updatePushToken);
 
 export default router;

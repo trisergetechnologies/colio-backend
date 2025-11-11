@@ -1,26 +1,49 @@
 // services/pushService.js
-import admin from 'firebase-admin';
 import dotenv from 'dotenv';
 dotenv.config();
 
-if (!admin.apps.length) {
-  const sa = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (sa) {
-    admin.initializeApp({
-      credential: admin.credential.cert(JSON.parse(sa))
-    });
-  } else {
-    // If no service account, admin will try default credentials (not recommended for production)
-    try { admin.initializeApp(); } catch (e) { /* ignore */ }
-  }
-}
+import { Expo } from 'expo-server-sdk';
 
-export async function sendPushToDevice(fcmToken, title, body, data = {}) {
-  if (!fcmToken) return null;
-  const msg = {
-    token: fcmToken,
-    notification: { title, body },
-    data: { ...data }
-  };
-  return admin.messaging().send(msg);
+// Create a single Expo SDK client
+const expo = new Expo();
+
+/**
+ * Send push notification to a single device (Expo token).
+ * 
+ * @param {string} pushToken - The Expo push token (e.g. ExponentPushToken[xxxxx])
+ * @param {string} title - Notification title
+ * @param {string} body - Notification body
+ * @param {object} data - Extra payload data (optional)
+ * @returns {Promise<object>} Expo ticket result
+ */
+export async function sendPushToDevice(pushToken, title, body, data = {}) {
+  try {
+    if (!pushToken) {
+      console.warn('No Expo push token provided');
+      return null;
+    }
+
+    // Verify valid token
+    if (!Expo.isExpoPushToken(pushToken)) {
+      console.warn(`Invalid Expo push token: ${pushToken}`);
+      return null;
+    }
+
+    const message = {
+      to: pushToken,
+      sound: 'default',
+      title: title || '',
+      body: body || '',
+      data: data || {},
+      priority: 'high',
+    };
+
+    // Send message to Expo push service
+    const receipts = await expo.sendPushNotificationsAsync([message]);
+    console.log('Expo push receipts:', receipts);
+    return receipts[0];
+  } catch (error) {
+    console.error('Error sending Expo push:', error);
+    throw error;
+  }
 }
