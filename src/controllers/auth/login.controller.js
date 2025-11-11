@@ -23,7 +23,8 @@ export const loginUser = async (req, res) => {
       identifier, // email or phone
       password,
       loginType = 'email', // 'email', 'phone', 'google'
-      googleId // for Google OAuth login
+      googleId, // for Google OAuth login
+      role
     } = req.body;
 
     // Input validation based on login type
@@ -67,6 +68,14 @@ export const loginUser = async (req, res) => {
 
     // Find user (include password only for non-Google login)
     const user = await User.findOne(userQuery).select(loginType === 'google' ? '' : '+password');
+
+    if (user.role !== role) {
+      return res.status(200).json({
+        success: false,
+        message: 'Invalid credentials',
+        data: null
+      });
+    }
     
     if (!user) {
       return res.status(200).json({
