@@ -4,18 +4,23 @@ import User from '../../models/User.js';
 import { buildRtcTokenWithAccount } from '../../services/agoraTokenService.js';
 import { sendPushToDevice } from '../../services/pushService.js';
 
+// controllers/agora/communicationController.js
 export const startSession = async (req, res) => {
   try {
     const customerId = req.user.userId;
-    const { consultantId, type } = req.body; // type: 'voice' | 'video'
+    const { consultantId, type } = req.body;
 
     if (!consultantId || !type) {
       return res.status(400).json({ error: 'consultantId and type required' });
     }
 
-    // Get customer and consultant details
+    // ✅ Get both user details
     const customer = await User.findById(customerId);
     const consultant = await User.findById(consultantId);
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
 
     if (!consultant) {
       return res.status(404).json({ error: 'Consultant not found' });
@@ -29,7 +34,7 @@ export const startSession = async (req, res) => {
     // Generate channel name
     const channelName = `call-${Date.now()}-${customerId}`;
 
-    // Generate RTC tokens for both parties
+    // Generate RTC tokens
     const customerAccount = customerId.toString();
     const consultantAccount = consultantId.toString();
     
@@ -54,6 +59,8 @@ export const startSession = async (req, res) => {
 
     // 🔔 Send push notification to consultant
     if (consultant.fcmToken) {
+      console.log('Sending push to consultant:', consultant.fcmToken);
+      
       await sendPushToDevice(
         consultant.fcmToken,
         `Incoming ${type} call`,
@@ -63,12 +70,17 @@ export const startSession = async (req, res) => {
           sessionId: session._id.toString(),
           callType: type,
           customerName: customer.name,
-          customerAvatar: customer.avatar,
+          customerAvatar: customer.avatar || '',
           channelName,
         }
       );
+      
+      console.log('Push notification sent successfully');
+    } else {
+      console.warn('Consultant has no FCM token registered');
     }
 
+    // Return to customer
     res.json({
       ok: true,
       session: {
