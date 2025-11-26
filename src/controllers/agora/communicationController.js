@@ -162,3 +162,110 @@ export const endSession = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
+
+/**
+ * Get pending incoming calls for the logged-in consultant
+ * GET /api/communication/incoming-calls
+ */
+export const getIncomingCalls = async (req, res) => {
+  try {
+    const consultantId = req.user.userId;
+    
+    console.log('📞 Checking incoming calls for consultant:', consultantId);
+
+    // Find all ringing sessions for this consultant
+    const pendingSessions = await CommunicationSession.find({
+      consultant: consultantId,
+      status: 'ringing', // Only get calls that haven't been answered/rejected
+      createdAt: { $gte: new Date(Date.now() - 60000) } // Only last 60 seconds
+    })
+    .populate('customer', 'name avatar') // Get customer details
+    .sort({ createdAt: -1 }) // Newest first
+    .limit(5);
+
+    console.log('📋 Found', pendingSessions.length, 'pending calls');
+
+    // Format response
+    const incomingCalls = pendingSessions.map(session => ({
+      sessionId: session._id.toString(),
+      callType: session.type,
+      channelName: session.agora.channelName,
+      customerName: session.customer.name,
+      customerAvatar: session.customer.avatar || '',
+      customerId: session.customer._id.toString(),
+      createdAt: session.createdAt,
+      ratePerMinute: session.ratePerMinute,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        incomingCalls,
+        count: incomingCalls.length,
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ getIncomingCalls error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: 'Server error' 
+    });
+  }
+};
+
+/**
+ * Mark call as answered (when consultant accepts)
+ * POST /api/communication/call/answer
+ * Body: { sessionId }
+ */
+export const answerCall = async (req, res) => {
+  try {
+    const consultantId = req.user.userId;
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'sessionId required' 
+      });
+    }
+
+    const session = await CommunicationSession.findOne({
+      _id: sessionId,
+      consultant: consultantId,
+      status: 'ringing'
+    });
+
+    if (!session) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Call not found or already answered' 
+      });
+    }
+
+    // Update session status
+    session.status = 'active';
+    session.startedAt = new Date();
+    await session.save();
+
+    console.log('✅ Call answered:', sessionId);
+
+    res.json({
+      success: true,
+      data: {
+        sessionId: session._id,
+        channelName: session.agora.channelName,
+        rtcToken: session.agora.rtcTokenConsultant,
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ answerCall error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: 'Server error' 
+    });
+  }
+};
