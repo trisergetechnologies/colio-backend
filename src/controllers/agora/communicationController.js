@@ -1,10 +1,9 @@
 // controllers/agora/communicationController.js
 import CommunicationSession from '../../models/CommunicationSession.js';
 import User from '../../models/User.js';
-import { buildRtcTokenWithAccount } from '../../services/agoraTokenService.js';
+import { buildRtcTokenWithUid } from '../../services/agoraTokenService.js';
 import { sendPushToDevice } from '../../services/pushService.js';
 
-// controllers/agora/communicationController.js
 export const startSession = async (req, res) => {
   try {
     const customerId = req.user.userId;
@@ -14,7 +13,6 @@ export const startSession = async (req, res) => {
       return res.status(400).json({ error: 'consultantId and type required' });
     }
 
-    // ✅ Get both user details
     const customer = await User.findById(customerId);
     const consultant = await User.findById(consultantId);
 
@@ -26,7 +24,6 @@ export const startSession = async (req, res) => {
       return res.status(404).json({ error: 'Consultant not found' });
     }
 
-    // Check consultant availability
     if (consultant.consultantProfile?.availabilityStatus !== 'onWork') {
       return res.status(400).json({ error: 'Consultant is not available' });
     }
@@ -34,12 +31,13 @@ export const startSession = async (req, res) => {
     // Generate channel name
     const channelName = `call-${Date.now()}-${customerId}`;
 
-    // Generate RTC tokens
-    const customerAccount = customerId.toString();
-    const consultantAccount = consultantId.toString();
-    
-    const rtcTokenCustomer = buildRtcTokenWithAccount(channelName, customerAccount);
-    const rtcTokenConsultant = buildRtcTokenWithAccount(channelName, consultantAccount);
+    // ✅ Generate tokens with UID 0 (both customer and consultant will auto-assign UIDs)
+    const rtcTokenCustomer = buildRtcTokenWithUid(channelName, 0);
+    const rtcTokenConsultant = buildRtcTokenWithUid(channelName, 0);
+
+    console.log('🔑 Generated tokens for channel:', channelName);
+    console.log('   Customer token (first 30):', rtcTokenCustomer.substring(0, 30));
+    console.log('   Consultant token (first 30):', rtcTokenConsultant.substring(0, 30));
 
     // Create session
     const session = await CommunicationSession.create({
@@ -49,17 +47,17 @@ export const startSession = async (req, res) => {
       status: 'ringing',
       agora: {
         channelName,
-        customerAccount,
-        consultantAccount,
+        customerAccount: customerId.toString(), // Keep for reference
+        consultantAccount: consultantId.toString(), // Keep for reference
         rtcTokenCustomer,
         rtcTokenConsultant,
       },
       ratePerMinute: consultant.consultantProfile?.ratePerMinute || 4,
     });
 
-    // 🔔 Send push notification to consultant
+    // Send push notification to consultant
     if (consultant.fcmToken) {
-      console.log('Sending push to consultant:', consultant.fcmToken);
+      console.log('📤 Sending push to consultant');
       
       await sendPushToDevice(
         consultant.fcmToken,
@@ -75,9 +73,9 @@ export const startSession = async (req, res) => {
         }
       );
       
-      console.log('Push notification sent successfully');
+      console.log('✅ Push notification sent');
     } else {
-      console.warn('Consultant has no FCM token registered');
+      console.warn('⚠️ Consultant has no FCM token');
     }
 
     // Return to customer
@@ -91,7 +89,7 @@ export const startSession = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('startSession error:', err);
+    console.error('❌ startSession error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 };
@@ -106,13 +104,11 @@ export const getRtcToken = async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    // Determine if user is customer or consultant
     const isCustomer = session.customer.toString() === userId;
     const rtcToken = isCustomer 
       ? session.agora.rtcTokenCustomer 
       : session.agora.rtcTokenConsultant;
 
-    // Update session status to active
     if (session.status === 'ringing') {
       session.status = 'active';
       session.startedAt = new Date();
@@ -149,7 +145,6 @@ export const endSession = async (req, res) => {
       const durationMs = session.endedAt - session.startedAt;
       session.totalDurationSeconds = Math.floor(durationMs / 1000);
       
-      // Calculate billing
       const minutes = session.totalDurationSeconds / 60;
       session.billedAmount = Math.ceil(minutes * session.ratePerMinute);
     }
@@ -163,30 +158,23 @@ export const endSession = async (req, res) => {
   }
 };
 
-
-/**
- * Get pending incoming calls for the logged-in consultant
- * GET /api/communication/incoming-calls
- */
 export const getIncomingCalls = async (req, res) => {
   try {
     const consultantId = req.user.userId;
     
     console.log('📞 Checking incoming calls for consultant:', consultantId);
 
-    // Find all ringing sessions for this consultant
     const pendingSessions = await CommunicationSession.find({
       consultant: consultantId,
-      status: 'ringing', // Only get calls that haven't been answered/rejected
-      createdAt: { $gte: new Date(Date.now() - 60000) } // Only last 60 seconds
+      status: 'ringing',
+      createdAt: { $gte: new Date(Date.now() - 60000) }
     })
-    .populate('customer', 'name avatar') // Get customer details
-    .sort({ createdAt: -1 }) // Newest first
+    .populate('customer', 'name avatar')
+    .sort({ createdAt: -1 })
     .limit(5);
 
     console.log('📋 Found', pendingSessions.length, 'pending calls');
 
-    // Format response
     const incomingCalls = pendingSessions.map(session => ({
       sessionId: session._id.toString(),
       callType: session.type,
@@ -215,11 +203,6 @@ export const getIncomingCalls = async (req, res) => {
   }
 };
 
-/**
- * Mark call as answered (when consultant accepts)
- * POST /api/communication/call/answer
- * Body: { sessionId }
- */
 export const answerCall = async (req, res) => {
   try {
     const consultantId = req.user.userId;
@@ -245,12 +228,12 @@ export const answerCall = async (req, res) => {
       });
     }
 
-    // Update session status
     session.status = 'active';
     session.startedAt = new Date();
     await session.save();
 
     console.log('✅ Call answered:', sessionId);
+    console.log('   Channel:', session.agora.channelName);
 
     res.json({
       success: true,
