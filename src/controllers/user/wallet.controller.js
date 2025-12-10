@@ -143,197 +143,77 @@ export const getWalletBalance = async (req, res) => {
 export const getTransactionHistory = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { 
-      page = 1, 
-      limit = 20, 
-      type, // 'all', 'sessions', 'recharge', 'withdrawal', 'referral', 'bonus'
-      startDate,
-      endDate
+
+    // Optional filters / pagination from query params
+    const {
+      page = 1,
+      limit = 20,
+      status, // pending | success | failed (optional)
     } = req.query;
 
-    // Find user
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNumber = Math.max(parseInt(limit, 10) || 20, 1);
+
+    // Verify user exists (optional but safer)
     const user = await User.findById(userId);
-    
     if (!user) {
       return res.status(200).json({
         success: false,
         message: 'User not found',
-        data: null
+        data: null,
       });
     }
 
-    // Build date filter
-    let dateFilter = {};
-    if (startDate || endDate) {
-      dateFilter.endedAt = {};
-      if (startDate) {
-        dateFilter.endedAt.$gte = new Date(startDate);
-      }
-      if (endDate) {
-        dateFilter.endedAt.$lte = new Date(endDate);
-      }
+    // Build query
+    const query = { user: user._id };
+    if (status && ['pending', 'success', 'failed'].includes(status)) {
+      query.status = status;
     }
 
-    let transactions = [];
-    let totalCount = 0;
+    // Fetch transactions + total count in parallel
+    const [transactions, totalCount] = await Promise.all([
+      PaymentHistory.find(query)
+        .sort({ createdAt: -1 }) // latest first
+        .skip((pageNumber - 1) * limitNumber)
+        .limit(limitNumber)
+        .lean(),
+      PaymentHistory.countDocuments(query),
+    ]);
 
-    if (user.role === 'customer') {
-      // Customer transactions (mainly session payments)
-      const sessionQuery = {
-        customer: user._id,
-        status: 'completed',
-        ...dateFilter
-      };
-
-      // Get sessions as transactions
-      const sessions = await Session.find(sessionQuery)
-        .populate('consultant', 'name avatar')
-        .sort({ endedAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit));
-
-      totalCount = await Session.countDocuments(sessionQuery);
-
-      transactions = sessions.map(session => ({
-        id: session._id,
-        type: 'session_payment',
-        description: `Chat session with ${session.consultant.name}`,
-        amount: -session.totalCost, // Negative for customer (outgoing)
-        breakdown: {
-          mainWallet: -session.mainWalletUsed,
-          bonusWallet: -session.bonusUsed,
-          duration: session.durationMinutes,
-          ratePerMinute: session.ratePerMinute
-        },
-        consultant: {
-          id: session.consultant._id,
-          name: session.consultant.name,
-          avatar: session.consultant.avatar
-        },
-        sessionId: session._id,
-        conversationId: session.conversationId,
-        date: session.endedAt,
-        status: 'completed'
-      }));
-
-      // TODO: Add other transaction types for customers
-      // - Wallet recharge transactions
-      // - Referral bonus transactions
-      // - Promotional bonus transactions
-
-    } else if (user.role === 'consultant') {
-      // Consultant transactions (mainly session earnings)
-      const sessionQuery = {
-        consultant: user._id,
-        status: 'completed',
-        ...dateFilter
-      };
-
-      // Get sessions as transactions
-      const sessions = await Session.find(sessionQuery)
-        .populate('customer', 'name avatar')
-        .sort({ endedAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit));
-
-      totalCount = await Session.countDocuments(sessionQuery);
-
-      transactions = sessions.map(session => ({
-        id: session._id,
-        type: 'session_earning',
-        description: `Chat session with ${session.customer.name}`,
-        amount: session.consultantEarning, // Positive for consultant (incoming)
-        breakdown: {
-          totalSessionCost: session.totalCost,
-          platformCommission: session.platformCommission,
-          consultantEarning: session.consultantEarning,
-          duration: session.durationMinutes,
-          ratePerMinute: session.ratePerMinute
-        },
-        customer: {
-          id: session.customer._id,
-          name: session.customer.name,
-          avatar: session.customer.avatar
-        },
-        sessionId: session._id,
-        conversationId: session.conversationId,
-        date: session.endedAt,
-        status: 'completed'
-      }));
-
-      // TODO: Add other transaction types for consultants
-      // - Withdrawal transactions
-      // - Bonus/incentive transactions
-    }
-
-    // Apply type filter if specified
-    if (type && type !== 'all') {
-      transactions = transactions.filter(transaction => {
-        switch (type) {
-          case 'sessions':
-            return ['session_payment', 'session_earning'].includes(transaction.type);
-          case 'recharge':
-            return transaction.type === 'wallet_recharge';
-          case 'withdrawal':
-            return transaction.type === 'wallet_withdrawal';
-          case 'referral':
-            return transaction.type === 'referral_bonus';
-          case 'bonus':
-            return transaction.type === 'promotional_bonus';
-          default:
-            return true;
-        }
-      });
-    }
-
-    // Calculate summary statistics
-    const summary = {
-      totalTransactions: totalCount,
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalCount / limit),
-      hasNextPage: page < Math.ceil(totalCount / limit),
-      hasPrevPage: page > 1
-    };
-
-    // Add role-specific summary
-    if (user.role === 'customer') {
-      const totalSpent = transactions
-        .filter(t => t.amount < 0)
-        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-      
-      summary.totalSpent = totalSpent;
-      summary.averageSessionCost = transactions.length > 0 ? totalSpent / transactions.length : 0;
-    } else {
-      const totalEarned = transactions
-        .filter(t => t.amount > 0)
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      summary.totalEarned = totalEarned;
-      summary.averageSessionEarning = transactions.length > 0 ? totalEarned / transactions.length : 0;
-    }
+    const totalPages = Math.ceil(totalCount / limitNumber);
 
     const responseData = {
-      transactions,
-      summary,
-      filters: {
-        type: type || 'all',
-        startDate: startDate || null,
-        endDate: endDate || null
-      }
+      userId: user._id,
+      pagination: {
+        page: pageNumber,
+        limit: limitNumber,
+        total: totalCount,
+        totalPages,
+        hasNextPage: pageNumber < totalPages,
+      },
+      transactions: transactions.map((tx) => ({
+        id: tx._id,
+        amount: tx.amount,
+        status: tx.status,
+        paymentMethod: tx.paymentMethod,
+        razorpayOrderId: tx.razorpayOrderId,
+        razorpayPaymentId: tx.razorpayPaymentId,
+        createdAt: tx.createdAt,
+        updatedAt: tx.updatedAt,
+      })),
     };
 
     return res.status(200).json({
       success: true,
       message: 'Transaction history retrieved successfully',
-      data: responseData
+      data: responseData,
     });
-
   } catch (error) {
     console.error('Get transaction history error:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve transaction history',
-      data: null
+      data: null,
     });
   }
 };
