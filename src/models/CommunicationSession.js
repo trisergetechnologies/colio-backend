@@ -26,6 +26,11 @@ const communicationSessionSchema = new mongoose.Schema(
     ratePerMinute: { type: Number, default: 0 },
     billedAmount: { type: Number, default: 0 },
 
+    isBilled: { 
+      type: Boolean, 
+      default: false 
+    },
+
     endedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     autoEnded: { type: Boolean, default: false },
 

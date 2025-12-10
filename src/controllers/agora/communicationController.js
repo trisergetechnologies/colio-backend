@@ -3,6 +3,7 @@ import CommunicationSession from '../../models/CommunicationSession.js';
 import User from '../../models/User.js';
 import { buildRtcTokenWithUid } from '../../services/agoraTokenService.js';
 import { sendPushToDevice } from '../../services/pushService.js';
+import CallLog from '../../models/CallLog.js';
 
 export const startSession = async (req, res) => {
   try {
@@ -28,6 +29,26 @@ export const startSession = async (req, res) => {
       return res.status(400).json({ error: 'Consultant is not available' });
     }
 
+    const ratePerMinute = consultant.consultantProfile?.ratePerMinute || 4; // same as before, but explicit
+    const MIN_MINUTES_TO_START = 2; // require at least 2 minutes balance
+
+    const customerTotalBalance =
+      (customer.wallet?.main || 0) + (customer.wallet?.bonus || 0);
+
+    const minRequiredBalance = ratePerMinute * MIN_MINUTES_TO_START;
+
+    if (customerTotalBalance < minRequiredBalance) {
+      return res.status(400).json({
+        error: 'Insufficient balance to start call',
+        required: minRequiredBalance,
+        available: customerTotalBalance
+      });
+    }
+
+    const maxPossibleMinutes =
+      ratePerMinute > 0 ? Math.floor(customerTotalBalance / ratePerMinute) : 0;
+    const estimatedMaxDurationSeconds = maxPossibleMinutes * 60;
+
     // Generate channel name
     const channelName = `call-${Date.now()}-${customerId}`;
 
@@ -52,7 +73,18 @@ export const startSession = async (req, res) => {
         rtcTokenCustomer,
         rtcTokenConsultant,
       },
-      ratePerMinute: consultant.consultantProfile?.ratePerMinute || 4,
+      ratePerMinute
+    });
+
+    // NEW: create basic CallLog entry (helps with history + duration)
+    await CallLog.create({
+      caller: customerId,
+      receiver: consultantId,
+      sessionId: session._id,
+      callType: type,
+      channelName,
+      status: 'ringing',
+      initiatedAt: new Date()
     });
 
     // Send push notification to consultant
@@ -70,6 +102,7 @@ export const startSession = async (req, res) => {
           customerName: customer.name,
           customerAvatar: customer.avatar || '',
           channelName,
+          estimatedMaxDurationSeconds
         }
       );
       
@@ -86,6 +119,8 @@ export const startSession = async (req, res) => {
         channelName,
         rtcToken: rtcTokenCustomer,
         type,
+        maxPossibleMinutes,
+        estimatedMaxDurationSeconds
       },
     });
   } catch (err) {
@@ -137,19 +172,100 @@ export const endSession = async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
+    // NEW: guard against double-ending / double-billing
+    if (session.status === 'ended' && session.isBilled) {
+      return res.json({ ok: true, session });
+    }
+
     session.status = 'ended';
     session.endedAt = new Date();
     session.endedBy = userId;
 
-    if (session.startedAt) {
-      const durationMs = session.endedAt - session.startedAt;
-      session.totalDurationSeconds = Math.floor(durationMs / 1000);
-      
-      const minutes = session.totalDurationSeconds / 60;
-      session.billedAmount = Math.ceil(minutes * session.ratePerMinute);
+     if (session.startedAt && !session.isBilled) {
+      const endedAt = session.endedAt || new Date();
+      const durationMs = endedAt - session.startedAt;
+      const totalDurationSeconds = Math.floor(durationMs / 1000);
+
+      // Only bill if positive duration
+      if (totalDurationSeconds > 0) {
+        // 1-minute rounding (ceil)
+        const minutes = Math.max(1, Math.ceil(totalDurationSeconds / 60));
+
+        // Reload customer & consultant for wallet changes
+        const [customer, consultant] = await Promise.all([
+          User.findById(session.customer),
+          User.findById(session.consultant),
+        ]);
+
+        if (!customer || !consultant) {
+          console.warn('⚠️ Customer or consultant not found during billing');
+        } else {
+          const ratePerMinute =
+            session.ratePerMinute ||
+            consultant.consultantProfile?.ratePerMinute ||
+            0;
+
+          const intendedAmount = minutes * ratePerMinute; // expected charge
+
+          // NEW: basic wallet-based billing, bonus first, then main
+          let remainingToBill = intendedAmount;
+
+          const customerMain = customer.wallet?.main || 0;
+          const customerBonus = customer.wallet?.bonus || 0;
+
+          let bonusToDeduct = Math.min(customerBonus, remainingToBill);
+          remainingToBill -= bonusToDeduct;
+
+          let mainToDeduct = Math.min(customerMain, remainingToBill);
+          remainingToBill -= mainToDeduct;
+
+          const totalDebited = bonusToDeduct + mainToDeduct;
+
+          // Deduct from customer
+          customer.wallet.bonus = customerBonus - bonusToDeduct;
+          customer.wallet.main = customerMain - mainToDeduct;
+
+          if (consultant.consultantProfile?.wallet) {
+
+            const consultantShare = Math.round(totalDebited * 0.40); // 40%
+            const companyShare = totalDebited - consultantShare;       // 60%
+
+            // Credit the consultant their share
+            consultant.consultantProfile.wallet.pending += consultantShare;
+            consultant.consultantProfile.wallet.totalEarned += consultantShare;
+
+            // OPTIONAL: If you ever want to store company's earnings:
+            // session.companyCommission = companyShare;
+            // (No schema change required if you skip this)
+          }
+
+          // Update session billing fields
+          session.totalDurationSeconds = totalDurationSeconds;
+          session.billedAmount = totalDebited;
+          session.ratePerMinute = ratePerMinute;
+          session.isBilled = true;
+
+          // Persist wallet + session changes
+          await Promise.all([
+            customer.save(),
+            consultant.save()
+          ]);
+        }
+      }
     }
 
     await session.save();
+
+    const callLog = await CallLog.findOne({ sessionId: session._id });
+    if (callLog) {
+      callLog.endedAt = session.endedAt;
+      callLog.status = 'ended';
+      callLog.endReason = 'completed'; // you can adjust based on more context
+
+      // Use existing instance method to compute duration
+      callLog.calculateDuration();
+      await callLog.save();
+    }
 
     res.json({ ok: true, session });
   } catch (err) {
@@ -234,6 +350,14 @@ export const answerCall = async (req, res) => {
 
     console.log('✅ Call answered:', sessionId);
     console.log('   Channel:', session.agora.channelName);
+
+    await CallLog.findOneAndUpdate(
+      { sessionId: session._id },
+      {
+        status: 'answered',
+        answeredAt: session.startedAt
+      }
+    );
 
     res.json({
       success: true,
