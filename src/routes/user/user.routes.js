@@ -13,7 +13,8 @@ import {
 } from '../../controllers/user/profile.controller.js';
 import { 
   getWalletBalance, 
-  getTransactionHistory 
+  getTransactionHistory, 
+  rechargeWallet
 } from '../../controllers/user/wallet.controller.js';
 import { 
   getUserSessions, 
@@ -57,6 +58,7 @@ router.get('/session/:id', getSessionDetails);
 
 router.post('/session/:id/end', endSession);
 
-router.post('/push-token', updatePushToken);
+router.post('/push-token', updatePushToken);rechargeWallet
+router.post('/rechargewallet', rechargeWallet);
 
 export default router;

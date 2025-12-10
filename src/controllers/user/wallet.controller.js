@@ -3,6 +3,7 @@
 
 import User from '../../models/User.js';
 import Session from '../../models/Session.js';
+import { PaymentHistory } from '../../models/PaymentHistory.js';
 
 /**
  * Get wallet balance
@@ -333,6 +334,113 @@ export const getTransactionHistory = async (req, res) => {
       success: false,
       message: 'Failed to retrieve transaction history',
       data: null
+    });
+  }
+};
+
+
+export const rechargeWallet = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { amount, paymentMethod } = req.body;
+
+    // Basic validation
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+      return res.status(200).json({
+        success: false,
+        message: 'Invalid amount',
+        data: null,
+      });
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: 'User not found',
+        data: null,
+      });
+    }
+
+    // For demo, we typically allow only customers to recharge
+    if (user.role !== 'customer') {
+      return res.status(200).json({
+        success: false,
+        message: 'Only customers can recharge wallet',
+        data: null,
+      });
+    }
+
+    const rechargeAmount = Number(amount);
+
+    // ------------------------------------------------------------------
+    // DEMO PAYMENT FLOW
+    // In a real integration you would:
+    // 1. Create Razorpay order
+    // 2. Confirm payment via webhook or verify signature
+    // 3. Then mark payment history as success and credit wallet
+    //
+    // Here we directly mark payment as "success" and credit wallet.
+    // ------------------------------------------------------------------
+
+    const demoRazorpayOrderId = `demo_order_${Date.now()}`;
+    const demoRazorpayPaymentId = `demo_pay_${Date.now()}`;
+
+    // Create payment history entry
+    const paymentRecord = await PaymentHistory.create({
+      user: user._id,
+      amount: rechargeAmount,
+      razorpayOrderId: demoRazorpayOrderId,
+      razorpayPaymentId: demoRazorpayPaymentId,
+      status: 'success', // directly success for demo
+      paymentMethod: paymentMethod || 'demo',
+    });
+
+    // Credit wallet (main balance)
+    if (!user.wallet) {
+      // Just in case, initialize wallet structure
+      user.wallet = {
+        main: 0,
+        bonus: 0,
+      };
+    }
+
+    user.wallet.main = (user.wallet.main || 0) + rechargeAmount;
+
+    await user.save();
+
+    const responseData = {
+      userId: user._id,
+      role: user.role,
+      wallet: {
+        main: user.wallet.main,
+        bonus: user.wallet.bonus || 0,
+        total: (user.wallet.main || 0) + (user.wallet.bonus || 0),
+      },
+      payment: {
+        id: paymentRecord._id,
+        amount: paymentRecord.amount,
+        status: paymentRecord.status,
+        razorpayOrderId: paymentRecord.razorpayOrderId,
+        razorpayPaymentId: paymentRecord.razorpayPaymentId,
+        paymentMethod: paymentRecord.paymentMethod,
+        createdAt: paymentRecord.createdAt,
+      },
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: 'Wallet recharged successfully (demo)',
+      data: responseData,
+    });
+  } catch (error) {
+    console.error('Recharge wallet demo error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to recharge wallet',
+      data: null,
     });
   }
 };
