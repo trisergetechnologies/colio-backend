@@ -45,10 +45,10 @@ router.delete('/favorites/:id', removeFromFavorites);
 router.get('/favorites', getFavoriteConsultants);
 
 // Session Initiation
-router.post('/session/start', 
-  sessionStartRateLimit,
-  // validateRequest(validationSchemas.startSession),
-  startSession
-);
+// router.post('/session/start', 
+//   sessionStartRateLimit,
+//   // validateRequest(validationSchemas.startSession),
+//   startSession
+// );
 
 export default router;

@@ -17,9 +17,9 @@ import {
   rechargeWallet
 } from '../../controllers/user/wallet.controller.js';
 import { 
-  getUserSessions, 
   getSessionDetails, 
-  endSession 
+  endSession, 
+  getUserCommunicationSessions
 } from '../../controllers/session/session.controller.js';
 import { updatePushToken } from '../../controllers/user/notification.controller.js';
 
@@ -52,7 +52,7 @@ router.get('/wallet', getWalletBalance);
 router.get('/transactions', getTransactionHistory);
 
 // Session Management (Shared between customer & consultant)
-router.get('/sessions', getUserSessions);
+router.get('/sessions', getUserCommunicationSessions);
 
 router.get('/session/:id', getSessionDetails);
 

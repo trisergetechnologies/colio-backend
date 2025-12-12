@@ -502,18 +502,14 @@ export const startSession = async (req, res) => {
 };
 
 
-/**
- * Get user sessions
- * @route GET /api/user/sessions
- * @desc Get user's session history with pagination
- * @access Private (Both customer & consultant)
- */
-export const getUserSessions = async (req, res) => {
+export const getUserCommunicationSessions = async (req, res) => {
   try {
     const userId = req.user.userId;
     const { page = 1, limit = 20, status, type } = req.query;
 
+    // ---------------------------
     // Build query
+    // ---------------------------
     const query = {
       $or: [
         { customer: userId },
@@ -529,65 +525,89 @@ export const getUserSessions = async (req, res) => {
       query.type = type;
     }
 
-    // Calculate pagination
-    const skip = (page - 1) * limit;
+    // ---------------------------
+    // Pagination
+    // ---------------------------
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNumber = Math.max(parseInt(limit, 10) || 20, 1);
+    const skip = (pageNumber - 1) * limitNumber;
 
-    // Get sessions with populated user data
-    const sessions = await Session.find(query)
+    // ---------------------------
+    // Fetch sessions
+    // ---------------------------
+    const sessions = await CommunicationSession.find(query)
       .populate('customer', 'name avatar')
       .populate('consultant', 'name avatar consultantProfile.ratePerMinute')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limitNumber);
 
-    // Get total count for pagination
-    const totalSessions = await Session.countDocuments(query);
+    // ---------------------------
+    // Total count
+    // ---------------------------
+    const totalSessions = await CommunicationSession.countDocuments(query);
 
-    // Format response data
+    // ---------------------------
+    // Format response
+    // ---------------------------
     const responseData = {
       sessions: sessions.map(session => ({
         sessionId: session._id,
-        conversationId: session.conversationId,
-        sessionNumber: session.sessionNumber,
+
         type: session.type,
         status: session.status,
+
         customer: session.customer,
         consultant: session.consultant,
+
+        // Agora
+        channelName: session.agora?.channelName || null,
+        chatConversationId: session.agora?.chatConversationId || null,
+
+        // Billing / timing
         ratePerMinute: session.ratePerMinute,
-        durationMinutes: session.durationMinutes,
-        totalCost: session.totalCost,
-        requestedAt: session.requestedAt,
+        totalDurationSeconds: session.totalDurationSeconds,
+        billedAmount: session.billedAmount,
+        isBilled: session.isBilled,
+
         startedAt: session.startedAt,
         endedAt: session.endedAt,
-        lastMessageAt: session.lastMessageAt,
-        messageCount: session.messageCount,
-        customerRating: session.customerRating,
-        consultantRating: session.consultantRating
+
+        endedBy: session.endedBy,
+        autoEnded: session.autoEnded,
+
+        networkQuality: session.networkQuality,
+
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt
       })),
+
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(totalSessions / limit),
+        currentPage: pageNumber,
+        totalPages: Math.ceil(totalSessions / limitNumber),
         totalSessions,
-        hasNextPage: page < Math.ceil(totalSessions / limit),
-        hasPrevPage: page > 1
+        hasNextPage: pageNumber < Math.ceil(totalSessions / limitNumber),
+        hasPrevPage: pageNumber > 1
       }
     };
 
     return res.status(200).json({
       success: true,
-      message: 'Sessions retrieved successfully',
+      message: 'Communication sessions retrieved successfully',
       data: responseData
     });
 
   } catch (error) {
-    console.error('Get user sessions error:', error);
+    console.error('Get communication sessions error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to retrieve sessions',
+      message: 'Failed to retrieve communication sessions',
       data: null
     });
   }
 };
+
+
 
 /**
  * Get session details
