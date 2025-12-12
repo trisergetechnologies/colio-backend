@@ -134,6 +134,112 @@ export const getAvailableConsultants = async (req, res) => {
   }
 };
 
+
+export const quickConnect = async (req, res) => {
+  try {
+    const {
+      skills,
+      minRating = 0,
+      maxRate,
+      language = 'english'
+    } = req.query;
+
+    // Base match conditions (same availability logic)
+    const matchStage = {
+      role: 'consultant',
+      isActive: true,
+      isVerified: true,
+      'consultantProfile.availabilityStatus': 'onWork'
+    };
+
+    // Optional filters
+    if (skills) {
+      matchStage['consultantProfile.skills'] = {
+        $in: skills.split(',')
+      };
+    }
+
+    if (minRating > 0) {
+      matchStage['consultantProfile.ratingAverage'] = {
+        $gte: parseFloat(minRating)
+      };
+    }
+
+    if (maxRate) {
+      matchStage['consultantProfile.ratePerMinute'] = {
+        $lte: parseFloat(maxRate)
+      };
+    }
+
+    if (language) {
+      matchStage.languages = language;
+    }
+
+    // Aggregation pipeline for RANDOM 5 consultants
+    const consultants = await User.aggregate([
+      { $match: matchStage },
+
+      // Random selection
+      { $sample: { size: 5 } },
+
+      // Pick only required fields
+      {
+        $project: {
+          name: 1,
+          avatar: 1,
+          languages: 1,
+          createdAt: 1,
+          consultantProfile: {
+            bio: 1,
+            skills: 1,
+            ratePerMinute: 1,
+            ratingAverage: 1,
+            ratingCount: 1,
+            totalSessions: 1,
+            availabilityStatus: 1
+          }
+        }
+      }
+    ]);
+
+    // Format response
+    const formattedConsultants = consultants.map(c => ({
+      id: c._id,
+      name: c.name,
+      avatar: c.avatar,
+      bio: c.consultantProfile?.bio,
+      skills: c.consultantProfile?.skills || [],
+      languages: c.languages,
+      ratePerMinute: c.consultantProfile?.ratePerMinute,
+      ratingAverage: c.consultantProfile?.ratingAverage,
+      ratingCount: c.consultantProfile?.ratingCount,
+      totalSessions: c.consultantProfile?.totalSessions,
+      availabilityStatus: c.consultantProfile?.availabilityStatus,
+      experienceMonths: Math.floor(
+        (new Date() - new Date(c.createdAt)) / (1000 * 60 * 60 * 24 * 30)
+      )
+    }));
+
+    return res.status(200).json({
+      success: true,
+      message: 'Quick connect consultants fetched successfully',
+      data: {
+        consultants: formattedConsultants,
+        count: formattedConsultants.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Quick connect error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch quick connect consultants',
+      data: null
+    });
+  }
+};
+
+
 /**
  * Get consultant details
  * @route GET /api/customer/consultant/:id

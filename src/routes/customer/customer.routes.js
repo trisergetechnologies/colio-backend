@@ -11,7 +11,8 @@ import {
   searchConsultants, 
   addToFavorites, 
   removeFromFavorites, 
-  getFavoriteConsultants 
+  getFavoriteConsultants, 
+  quickConnect
 } from '../../controllers/consultant/discovery.controller.js';
 import { startSession } from '../../controllers/session/session.controller.js';
 
@@ -24,6 +25,7 @@ router.use(apiRateLimit);
 
 // Consultant Discovery
 router.get('/consultants', getAvailableConsultants);
+router.get('/quickconnect', quickConnect);
 
 router.get('/consultant/:id', getConsultantDetails);
 
