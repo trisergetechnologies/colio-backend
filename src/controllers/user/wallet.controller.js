@@ -144,76 +144,65 @@ export const getTransactionHistory = async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Optional filters / pagination from query params
     const {
       page = 1,
       limit = 20,
-      status, // pending | success | failed (optional)
+      status
     } = req.query;
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
     const limitNumber = Math.max(parseInt(limit, 10) || 20, 1);
-
-    // Verify user exists (optional but safer)
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(200).json({
-        success: false,
-        message: 'User not found',
-        data: null,
-      });
-    }
+    const skip = (pageNumber - 1) * limitNumber;
 
     // Build query
-    const query = { user: user._id };
+    const query = { user: userId };
     if (status && ['pending', 'success', 'failed'].includes(status)) {
       query.status = status;
     }
 
-    // Fetch transactions + total count in parallel
+    // Fetch data in parallel
     const [transactions, totalCount] = await Promise.all([
       PaymentHistory.find(query)
-        .sort({ createdAt: -1 }) // latest first
-        .skip((pageNumber - 1) * limitNumber)
+        .sort({ createdAt: -1 })
+        .skip(skip)
         .limit(limitNumber)
         .lean(),
-      PaymentHistory.countDocuments(query),
+      PaymentHistory.countDocuments(query)
     ]);
 
     const totalPages = Math.ceil(totalCount / limitNumber);
 
-    const responseData = {
-      userId: user._id,
-      pagination: {
-        page: pageNumber,
-        limit: limitNumber,
-        total: totalCount,
-        totalPages,
-        hasNextPage: pageNumber < totalPages,
-      },
-      transactions: transactions.map((tx) => ({
-        id: tx._id,
-        amount: tx.amount,
-        status: tx.status,
-        paymentMethod: tx.paymentMethod,
-        razorpayOrderId: tx.razorpayOrderId,
-        razorpayPaymentId: tx.razorpayPaymentId,
-        createdAt: tx.createdAt,
-        updatedAt: tx.updatedAt,
-      })),
-    };
-
     return res.status(200).json({
       success: true,
       message: 'Transaction history retrieved successfully',
-      data: responseData,
+      data: {
+        pagination: {
+          currentPage: pageNumber,
+          limit: limitNumber,
+          total: totalCount,
+          totalPages,
+          hasNextPage: pageNumber < totalPages,
+          hasPrevPage: pageNumber > 1
+        },
+        transactions: transactions.map(tx => ({
+          id: tx._id,
+          amount: tx.amount,
+          status: tx.status,
+          paymentMethod: tx.paymentMethod,
+          razorpayOrderId: tx.razorpayOrderId,
+          razorpayPaymentId: tx.razorpayPaymentId,
+          createdAt: tx.createdAt,
+          updatedAt: tx.updatedAt
+        }))
+      }
     });
+
   } catch (error) {
     console.error('Get transaction history error:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve transaction history',
-      data: null,
+      data: null
     });
   }
 };
