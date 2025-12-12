@@ -10,6 +10,7 @@ import ChatMessage from '../../models/ChatMessage.js';
 import settingsService from '../../services/settingsService.js';
 import billingService from '../../services/billingService.js';
 import socketHandler from '../../sockets/socket.handler.js';
+import CommunicationSession from '../../models/CommunicationSession.js';
 
 
 /**

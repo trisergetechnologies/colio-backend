@@ -29,7 +29,16 @@ export const startSession = async (req, res) => {
       return res.status(400).json({ error: 'Consultant is not available' });
     }
 
-    const ratePerMinute = consultant.consultantProfile?.ratePerMinute || 4; // same as before, but explicit
+    let ratePerMinute = consultant.consultantProfile?.ratePerMinute || 15; // voice default
+
+    if (type === 'video') {
+      ratePerMinute = consultant.consultantProfile?.ratePerMinuteVideo || 25;
+    }
+
+    if (type === 'chat') {
+      ratePerMinute = consultant.consultantProfile?.ratePerMinuteChat || 10;
+    }
+    
     const MIN_MINUTES_TO_START = 2; // require at least 2 minutes balance
 
     const customerTotalBalance =

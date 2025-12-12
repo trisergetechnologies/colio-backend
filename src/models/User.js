@@ -163,9 +163,26 @@ const userSchema = new mongoose.Schema(
       
       ratePerMinute: {
         type: Number,
-        default: 4,
+        default: 15,
         min: 1,
-        max: 100,
+        required: function() {
+          return this.role === 'consultant';
+        }
+      },
+
+      ratePerMinuteVideo: {
+        type: Number,
+        default: 25,
+        min: 1,
+        required: function() {
+          return this.role === 'consultant';
+        }
+      },
+
+      ratePerMinuteChat: {
+        type: Number,
+        default: 10,
+        min: 1,
         required: function() {
           return this.role === 'consultant';
         }
