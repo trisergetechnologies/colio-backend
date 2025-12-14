@@ -11,11 +11,11 @@ export const googleOAuth = async (req, res) => {
       return res.status(200).json({
         success: false,
         message: "Authorization code is required",
-        data: null
+        data: null,
       });
     }
 
-    // 1️⃣ Exchange code → access token
+    // 1) Exchange code → access token
     const tokenRes = await axios.post(
       "https://oauth2.googleapis.com/token",
       {
@@ -33,18 +33,17 @@ export const googleOAuth = async (req, res) => {
       return res.status(200).json({
         success: false,
         message: "Failed to obtain Google access token",
-        data: null
+        data: null,
       });
     }
 
-    // 2️⃣ Fetch Google profile
+    // 2) Get google profile
     const profileRes = await axios.get(
       "https://www.googleapis.com/oauth2/v2/userinfo",
       {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
     );
-    console.log("[googleOAuth]", profileRes);
 
     const { id: googleId, email, name, picture } = profileRes.data;
 
@@ -52,33 +51,39 @@ export const googleOAuth = async (req, res) => {
       return res.status(200).json({
         success: false,
         message: "Google account does not provide email",
-        data: null
+        data: null,
       });
     }
 
-    // 3️⃣ Does this Google user already exist?
-    let existingUser = await User.findOne({ googleId });
+    // 3) Check for googleId first
+    let user = await User.findOne({ googleId });
 
-    if (existingUser) {
-      // 4️⃣ Existing user → Login
-      req.body = {
-        identifier: email.toLowerCase(),
-        googleId,
-        loginType: "google",
-        role: existingUser.role
-      };
-
+    if (user) {
+      // Google ID exists → login
+      req.body = { email, googleId };
       return googleLogin(req, res);
     }
 
-    // 5️⃣ User does not exist → Register
+    // 4) GoogleId not found → Check by email
+    user = await User.findOne({ email: email.toLowerCase() });
+
+    if (user) {
+      // Email exists → link googleId to existing user
+      user.googleId = googleId;
+      await user.save();
+
+      req.body = { email, googleId };
+      return googleLogin(req, res);
+    }
+
+    // 5) No googleId & no email → register new user
     req.body = {
       name: name || "Google User",
       email: email.toLowerCase(),
       googleId,
       registrationType: "google",
       role: "customer",
-      avatar: picture
+      avatar: picture,
     };
 
     return googleRegister(req, res);
@@ -88,7 +93,7 @@ export const googleOAuth = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Google OAuth failed",
-      data: null
+      data: null,
     });
   }
 };
