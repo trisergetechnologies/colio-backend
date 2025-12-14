@@ -40,7 +40,7 @@ router.post('/login',
 
 router.post("/google-register", authRateLimit, googleRegister);
 router.post("/google-login", authRateLimit, googleLogin);
-router.post("/google/oauth", googleOAuth);
+router.get("/google/oauth", googleOAuth);
 
 router.post('/logout',
     authMiddleware,

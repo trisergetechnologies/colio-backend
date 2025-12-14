@@ -1,7 +1,6 @@
 import Session from '../models/Session.js';
 import User from '../models/User.js';
 import settingsService from './settingsService.js';
-import socketHandler from '../sockets/socket.handler.js';
 
 class BillingService {
   constructor() {
