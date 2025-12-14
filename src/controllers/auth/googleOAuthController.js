@@ -5,7 +5,7 @@ import { googleRegister } from "./googleRegisterController.js";
 
 export const googleOAuth = async (req, res) => {
   try {
-    const { code } = req.body;
+    const code = req.query.code;
 
     if (!code) {
       return res.status(200).json({
