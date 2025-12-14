@@ -20,6 +20,7 @@ import {
 } from '../../controllers/auth/otp.controller.js';
 import { googleRegister } from '../../controllers/auth/googleRegisterController.js';
 import { googleLogin } from '../../controllers/auth/googleLoginController.js';
+import { googleOAuth } from '../../controllers/auth/googleOAuthController.js';
 
 const router = express.Router();
 
@@ -39,6 +40,7 @@ router.post('/login',
 
 router.post("/google-register", authRateLimit, googleRegister);
 router.post("/google-login", authRateLimit, googleLogin);
+router.post("/google/oauth", googleOAuth);
 
 router.post('/logout',
     authMiddleware,
