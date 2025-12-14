@@ -44,6 +44,7 @@ export const googleOAuth = async (req, res) => {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
     );
+    console.log("[googleOAuth]", profileRes);
 
     const { id: googleId, email, name, picture } = profileRes.data;
 
