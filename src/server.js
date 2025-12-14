@@ -47,7 +47,6 @@ app.get('/', (req, res) => {
       features: {
         realTimeChat: true,
         realTimeBilling: true,
-        socketConnections: socketHandler.getConnectedUsersCount()
       },
       endpoints: {
         api: '/api',

@@ -60,12 +60,12 @@ class BillingService {
       this.billingIntervals.set(sessionId, intervalId);
 
       // Send billing started notification
-      this.sendBillingNotification(session.customer._id, {
-        type: 'billing:started',
-        sessionId,
-        ratePerMinute: session.ratePerMinute,
-        message: `Billing started at $${session.ratePerMinute}/minute`
-      });
+      // this.sendBillingNotification(session.customer._id, {
+      //   type: 'billing:started',
+      //   sessionId,
+      //   ratePerMinute: session.ratePerMinute,
+      //   message: `Billing started at $${session.ratePerMinute}/minute`
+      // });
 
       return billingData;
 
@@ -133,14 +133,14 @@ class BillingService {
       await this.checkLowBalanceWarnings(sessionId);
 
       // Send billing update to customer
-      this.sendBillingNotification(billingData.customerId, {
-        type: 'billing:deducted',
-        sessionId,
-        minutesBilled: minutesToBill,
-        costDeducted: costThisCycle,
-        totalCost: billingData.totalCostAccumulated,
-        remainingBalance: totalBalance - costThisCycle
-      });
+      // this.sendBillingNotification(billingData.customerId, {
+      //   type: 'billing:deducted',
+      //   sessionId,
+      //   minutesBilled: minutesToBill,
+      //   costDeducted: costThisCycle,
+      //   totalCost: billingData.totalCostAccumulated,
+      //   remainingBalance: totalBalance - costThisCycle
+      // });
 
       console.log(`Billed ${minutesToBill} minutes ($${costThisCycle}) for session: ${sessionId}`);
 
@@ -267,24 +267,9 @@ class BillingService {
         endedAt: new Date()
       });
 
-      // Notify both participants
-      this.sendBillingNotification(billingData.customerId, {
-        type: 'session:ended',
-        reason: 'insufficient_funds',
-        message: 'Session ended due to insufficient wallet balance'
-      });
-
-      this.sendBillingNotification(billingData.consultantId, {
-        type: 'session:ended',
-        reason: 'insufficient_funds',
-        message: 'Session ended - customer ran out of balance'
-      });
     } else {
       // Just send warning
-      this.sendBillingNotification(billingData.customerId, {
-        type: 'billing:insufficient_funds',
-        message: 'Insufficient balance! Please add funds to continue session.'
-      });
+      console.log("abc");
     }
   }
 
@@ -300,11 +285,11 @@ class BillingService {
     const remainingMinutes = Math.floor(totalBalance / billingData.ratePerMinute);
 
     if (remainingMinutes <= warningMinutes && !billingData.warningsSent.has(remainingMinutes)) {
-      this.sendBillingNotification(billingData.customerId, {
-        type: 'billing:low_balance',
-        remainingMinutes,
-        message: `Low balance warning: ${remainingMinutes} minutes remaining`
-      });
+      // this.sendBillingNotification(billingData.customerId, {
+      //   type: 'billing:low_balance',
+      //   remainingMinutes,
+      //   message: `Low balance warning: ${remainingMinutes} minutes remaining`
+      // });
       
       billingData.warningsSent.add(remainingMinutes);
     }
@@ -337,14 +322,14 @@ class BillingService {
   /**
    * Send billing notification via socket
    */
-  sendBillingNotification(userId, notification) {
-    if (socketHandler.io) {
-      socketHandler.io.to(`user_${userId}`).emit('billing:notification', {
-        ...notification,
-        timestamp: new Date()
-      });
-    }
-  }
+  // sendBillingNotification(userId, notification) {
+  //   if (socketHandler.io) {
+  //     socketHandler.io.to(`user_${userId}`).emit('billing:notification', {
+  //       ...notification,
+  //       timestamp: new Date()
+  //     });
+  //   }
+  // }
 
   /**
    * Handle billing errors
@@ -353,12 +338,12 @@ class BillingService {
     console.error(`Billing error for session ${sessionId}:`, error.message);
     
     const billingData = this.activeBillingSessions.get(sessionId);
-    if (billingData) {
-      this.sendBillingNotification(billingData.customerId, {
-        type: 'billing:error',
-        message: 'Billing system error. Please contact support.'
-      });
-    }
+    // if (billingData) {
+    //   this.sendBillingNotification(billingData.customerId, {
+    //     type: 'billing:error',
+    //     message: 'Billing system error. Please contact support.'
+    //   });
+    // }
   }
 
   /**
