@@ -1,12 +1,8 @@
 // 21. PUT  /api/consultant/availability   # updateAvailability()
 // 22. GET  /api/consultant/status         # getAvailabilityStatus()
-// 23. POST /api/consultant/session/:id/accept    # acceptSession()
-// 24. POST /api/consultant/session/:id/decline   # declineSession()
 
-
+import CommunicationSession from '../../models/CommunicationSession.js';
 import User from '../../models/User.js';
-import Session from '../../models/Session.js';
-import settingsService from '../../services/settingsService.js';
 
 /**
  * Update consultant availability status
@@ -17,7 +13,7 @@ import settingsService from '../../services/settingsService.js';
 export const updateAvailability = async (req, res) => {
   try {
     const { availabilityStatus } = req.body;
-    const consultantId = req.user.userId; // From auth middleware
+    const consultantId = req.user.userId;
 
     // Input validation
     if (!availabilityStatus) {
@@ -38,7 +34,7 @@ export const updateAvailability = async (req, res) => {
 
     // Find consultant
     const consultant = await User.findById(consultantId);
-    
+
     if (!consultant || consultant.role !== 'consultant') {
       return res.status(200).json({
         success: false,
@@ -55,9 +51,9 @@ export const updateAvailability = async (req, res) => {
       });
     }
 
-    // Check if consultant has any ongoing sessions when going offline
+    // Prevent going offline if active sessions exist
     if (availabilityStatus === 'offWork') {
-      const ongoingSessions = await Session.countDocuments({
+      const ongoingSessions = await CommunicationSession.countDocuments({
         consultant: consultantId,
         status: 'ongoing'
       });
@@ -71,18 +67,16 @@ export const updateAvailability = async (req, res) => {
       }
     }
 
-    // Update availability status
+    // Update availability
     consultant.consultantProfile.availabilityStatus = availabilityStatus;
     await consultant.save();
 
-    // Prepare response data
     const responseData = {
       consultantId: consultant._id,
-      availabilityStatus: consultant.consultantProfile.availabilityStatus,
+      availabilityStatus,
       updatedAt: new Date().toISOString()
     };
 
-    // Add status-specific information
     switch (availabilityStatus) {
       case 'onWork':
         responseData.message = 'You are now available to receive session requests';
@@ -94,12 +88,6 @@ export const updateAvailability = async (req, res) => {
         responseData.message = 'You are now marked as busy and will not receive new session requests';
         break;
     }
-
-    // TODO: Emit Socket.io event to update real-time status for customers
-    // io.emit('consultant:availability:updated', {
-    //   consultantId,
-    //   availabilityStatus
-    // });
 
     return res.status(200).json({
       success: true,
@@ -125,11 +113,10 @@ export const updateAvailability = async (req, res) => {
  */
 export const getAvailabilityStatus = async (req, res) => {
   try {
-    const consultantId = req.user.userId; // From auth middleware
+    const consultantId = req.user.userId;
 
-    // Find consultant with session statistics
     const consultant = await User.findById(consultantId);
-    
+
     if (!consultant || consultant.role !== 'consultant') {
       return res.status(200).json({
         success: false,
@@ -138,35 +125,33 @@ export const getAvailabilityStatus = async (req, res) => {
       });
     }
 
-    // Get ongoing sessions count
-    const ongoingSessions = await Session.countDocuments({
+    // Session counts
+    const ongoingSessions = await CommunicationSession.countDocuments({
       consultant: consultantId,
       status: 'ongoing'
     });
 
-    // Get pending session requests
-    const pendingSessions = await Session.countDocuments({
+    const pendingSessions = await CommunicationSession.countDocuments({
       consultant: consultantId,
       status: 'pending'
     });
 
-    // Get today's completed sessions
+    // Today range
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    
-    const todaySessions = await Session.countDocuments({
+
+    const todayCompleted = await CommunicationSession.countDocuments({
       consultant: consultantId,
       status: 'completed',
-      completedAt: { $gte: todayStart }
+      endedAt: { $gte: todayStart }
     });
 
-    // Calculate today's earnings
-    const todayEarnings = await Session.aggregate([
+    const todayEarningsAgg = await CommunicationSession.aggregate([
       {
         $match: {
           consultant: consultantId,
           status: 'completed',
-          completedAt: { $gte: todayStart }
+          endedAt: { $gte: todayStart }
         }
       },
       {
@@ -177,7 +162,6 @@ export const getAvailabilityStatus = async (req, res) => {
       }
     ]);
 
-    // Prepare response data
     const responseData = {
       consultantId: consultant._id,
       availabilityStatus: consultant.consultantProfile.availabilityStatus,
@@ -186,8 +170,10 @@ export const getAvailabilityStatus = async (req, res) => {
       sessionStats: {
         ongoing: ongoingSessions,
         pending: pendingSessions,
-        todayCompleted: todaySessions,
-        todayEarnings: todayEarnings.length > 0 ? todayEarnings[0].totalEarnings : 0
+        todayCompleted,
+        todayEarnings: todayEarningsAgg.length
+          ? todayEarningsAgg[0].totalEarnings
+          : 0
       },
       consultantProfile: {
         ratingAverage: consultant.consultantProfile.ratingAverage,
@@ -199,7 +185,6 @@ export const getAvailabilityStatus = async (req, res) => {
       lastUpdated: new Date().toISOString()
     };
 
-    // Add availability-specific messages
     switch (consultant.consultantProfile.availabilityStatus) {
       case 'onWork':
         responseData.statusMessage = 'You are available to receive session requests';
@@ -223,256 +208,6 @@ export const getAvailabilityStatus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve availability status',
-      data: null
-    });
-  }
-};
-
-/**
- * Accept session request
- * @route POST /api/consultant/session/:id/accept
- * @desc Accept incoming session request from customer
- * @access Private (Consultant only)
- */
-export const acceptSession = async (req, res) => {
-  try {
-    const { id: sessionId } = req.params;
-    const consultantId = req.user.userId; // From auth middleware
-
-    // Input validation
-    if (!sessionId) {
-      return res.status(200).json({
-        success: false,
-        message: 'Session ID is required',
-        data: null
-      });
-    }
-
-    // Find session
-    const session = await Session.findById(sessionId)
-      .populate('customer', 'name email wallet')
-      .populate('consultant', 'name consultantProfile.availabilityStatus');
-
-    if (!session) {
-      return res.status(200).json({
-        success: false,
-        message: 'Session not found',
-        data: null
-      });
-    }
-
-    // Verify consultant ownership
-    if (session.consultant._id.toString() !== consultantId) {
-      return res.status(200).json({
-        success: false,
-        message: 'Unauthorized to accept this session',
-        data: null
-      });
-    }
-
-    // Check session status
-    if (session.status !== 'pending') {
-      return res.status(200).json({
-        success: false,
-        message: `Cannot accept session. Current status: ${session.status}`,
-        data: null
-      });
-    }
-
-    // Check consultant availability
-    const consultant = await User.findById(consultantId);
-    
-    if (consultant.consultantProfile.availabilityStatus !== 'onWork') {
-      return res.status(200).json({
-        success: false,
-        message: 'You must be available (onWork) to accept sessions',
-        data: null
-      });
-    }
-
-    // Check if consultant has reached maximum concurrent sessions
-    const maxConcurrentSessions = await settingsService.getSetting('session.maxConcurrentSessions') || 3;
-    const ongoingSessions = await Session.countDocuments({
-      consultant: consultantId,
-      status: 'ongoing'
-    });
-
-    if (ongoingSessions >= maxConcurrentSessions) {
-      return res.status(200).json({
-        success: false,
-        message: `Cannot accept session. Maximum concurrent sessions (${maxConcurrentSessions}) reached.`,
-        data: null
-      });
-    }
-
-    // Check customer wallet balance
-    const minimumBalance = await settingsService.getSetting('financial.minimumWalletBalance');
-    const customerTotalBalance = session.customer.wallet.main + session.customer.wallet.bonus;
-    
-    if (customerTotalBalance < minimumBalance) {
-      // Auto-decline session due to insufficient funds
-      session.status = 'cancelled';
-      session.endReason = 'insufficient_funds';
-      session.endedAt = new Date();
-      await session.save();
-
-      return res.status(200).json({
-        success: false,
-        message: 'Cannot accept session. Customer has insufficient wallet balance.',
-        data: null
-      });
-    }
-
-    // Accept the session
-    session.status = 'ongoing';
-    session.startedAt = new Date();
-    session.lastActivity = new Date();
-    await session.save();
-
-    // Update consultant status to busy
-    consultant.consultantProfile.availabilityStatus = 'busy';
-    await consultant.save();
-
-    // Prepare response data
-    const responseData = {
-      sessionId: session._id,
-      conversationId: session.conversationId,
-      customer: {
-        id: session.customer._id,
-        name: session.customer.name
-      },
-      status: session.status,
-      startedAt: session.startedAt,
-      ratePerMinute: session.ratePerMinute,
-      type: session.type
-    };
-
-    // TODO: Emit Socket.io events
-    // Notify customer that session was accepted
-    // io.to(`user_${session.customer._id}`).emit('session:accepted', {
-    //   sessionId: session._id,
-    //   consultant: { id: consultantId, name: consultant.name }
-    // });
-
-    // TODO: Update consultant availability for other customers
-    // io.emit('consultant:availability:updated', {
-    //   consultantId,
-    //   availabilityStatus: 'busy'
-    // });
-
-    return res.status(200).json({
-      success: true,
-      message: 'Session accepted successfully',
-      data: responseData
-    });
-
-  } catch (error) {
-    console.error('Accept session error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to accept session',
-      data: null
-    });
-  }
-};
-
-/**
- * Decline session request
- * @route POST /api/consultant/session/:id/decline
- * @desc Decline incoming session request from customer
- * @access Private (Consultant only)
- */
-export const declineSession = async (req, res) => {
-  try {
-    const { id: sessionId } = req.params;
-    const { reason } = req.body; // Optional decline reason
-    const consultantId = req.user.userId; // From auth middleware
-
-    // Input validation
-    if (!sessionId) {
-      return res.status(200).json({
-        success: false,
-        message: 'Session ID is required',
-        data: null
-      });
-    }
-
-    // Find session
-    const session = await Session.findById(sessionId)
-      .populate('customer', 'name')
-      .populate('consultant', 'name');
-
-    if (!session) {
-      return res.status(200).json({
-        success: false,
-        message: 'Session not found',
-        data: null
-      });
-    }
-
-    // Verify consultant ownership
-    if (session.consultant._id.toString() !== consultantId) {
-      return res.status(200).json({
-        success: false,
-        message: 'Unauthorized to decline this session',
-        data: null
-      });
-    }
-
-    // Check session status
-    if (session.status !== 'pending') {
-      return res.status(200).json({
-        success: false,
-        message: `Cannot decline session. Current status: ${session.status}`,
-        data: null
-      });
-    }
-
-    // Decline the session
-    session.status = 'declined';
-    session.endedAt = new Date();
-    session.endedBy = 'consultant';
-    session.endReason = 'declined';
-    
-    // Add decline reason if provided
-    if (reason && reason.trim()) {
-      session.declineReason = reason.trim();
-    }
-
-    await session.save();
-
-    // Prepare response data
-    const responseData = {
-      sessionId: session._id,
-      status: session.status,
-      declinedAt: session.endedAt,
-      customer: {
-        id: session.customer._id,
-        name: session.customer.name
-      }
-    };
-
-    // TODO: Emit Socket.io event to notify customer
-    // io.to(`user_${session.customer._id}`).emit('session:declined', {
-    //   sessionId: session._id,
-    //   consultant: { id: consultantId, name: session.consultant.name },
-    //   reason: reason || 'No reason provided'
-    // });
-
-    // TODO: Suggest alternative consultants to customer
-    // This could trigger a service to recommend other available consultants
-
-    return res.status(200).json({
-      success: true,
-      message: 'Session declined successfully',
-      data: responseData
-    });
-
-  } catch (error) {
-    console.error('Decline session error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to decline session',
       data: null
     });
   }

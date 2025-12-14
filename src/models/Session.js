@@ -1,3 +1,8 @@
+// This is of no use
+// do not delete it
+// will be deleted later when dependency is removed
+
+
 import mongoose from 'mongoose';
 
 const sessionSchema = new mongoose.Schema(

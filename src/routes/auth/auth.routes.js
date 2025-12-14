@@ -18,6 +18,8 @@ import {
     verifyOTP,
     resendOTP
 } from '../../controllers/auth/otp.controller.js';
+import { googleRegister } from '../../controllers/auth/googleRegisterController.js';
+import { googleLogin } from '../../controllers/auth/googleLoginController.js';
 
 const router = express.Router();
 
@@ -34,6 +36,9 @@ router.post('/login',
     // validateRequest(validationSchemas.login),
     loginUser
 );
+
+router.post("/google-register", authRateLimit, googleRegister);
+router.post("/google-login", authRateLimit, googleLogin);
 
 router.post('/logout',
     authMiddleware,

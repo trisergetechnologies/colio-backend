@@ -16,11 +16,7 @@ import {
   getTransactionHistory, 
   rechargeWallet
 } from '../../controllers/user/wallet.controller.js';
-import { 
-  getSessionDetails, 
-  endSession, 
-  getUserCommunicationSessions
-} from '../../controllers/session/session.controller.js';
+import { getUserCommunicationSessions } from '../../controllers/session/session.controller.js';
 import { updatePushToken } from '../../controllers/user/notification.controller.js';
 
 const router = express.Router();
@@ -54,9 +50,6 @@ router.get('/transactions', getTransactionHistory);
 // Session Management (Shared between customer & consultant)
 router.get('/sessions', getUserCommunicationSessions);
 
-router.get('/session/:id', getSessionDetails);
-
-router.post('/session/:id/end', endSession);
 
 router.post('/push-token', updatePushToken);rechargeWallet
 router.post('/rechargewallet', rechargeWallet);

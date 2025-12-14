@@ -14,7 +14,6 @@ import {
   getFavoriteConsultants, 
   quickConnect
 } from '../../controllers/consultant/discovery.controller.js';
-import { startSession } from '../../controllers/session/session.controller.js';
 
 const router = express.Router();
 
@@ -43,12 +42,5 @@ router.post('/favorites',
 router.delete('/favorites/:id', removeFromFavorites);
 
 router.get('/favorites', getFavoriteConsultants);
-
-// Session Initiation
-// router.post('/session/start', 
-//   sessionStartRateLimit,
-//   // validateRequest(validationSchemas.startSession),
-//   startSession
-// );
 
 export default router;

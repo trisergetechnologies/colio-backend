@@ -35,7 +35,9 @@ const userSchema = new mongoose.Schema(
     
     phone: {
       type: String,
-      required: [true, 'Phone number is required'],
+      required: function () {
+        return !this.googleId;   // ❗ only require phone if NOT Google user
+      },
       unique: true,
       trim: true,
       match: [/^[+]?[1-9]\d{1,14}$/, 'Please provide a valid phone number']

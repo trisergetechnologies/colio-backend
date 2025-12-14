@@ -8,7 +8,6 @@ import connectDB from './config/db.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { apiRateLimit } from './middlewares/rateLimit.middleware.js';
 import apiRoutes from './routes/index.js';
-import socketHandler from './sockets/socket.handler.js';
 
 // Load environment variables
 dotenv.config();
@@ -18,9 +17,6 @@ const httpServer = createServer(app);
 
 // Connect to MongoDB
 connectDB();
-
-// Initialize Socket.io
-// const io = socketHandler.initialize(httpServer);
 
 // Security middleware
 app.use(helmet());
