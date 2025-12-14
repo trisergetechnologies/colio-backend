@@ -5,6 +5,7 @@ import { generateTokenPair } from "../../utils/token.helper.js";
 export const googleLogin = async (req, res) => {
   try {
     const { email, googleId } = req.body;
+    console.log("[googleLogin]", "email: ",email,"googleId: ",googleId);
 
     if (!googleId || !email) {
       return res.status(200).json({
