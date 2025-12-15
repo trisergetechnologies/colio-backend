@@ -9,6 +9,7 @@ import consultantRoutes from './consultant/consultant.routes.js';
 import sessionRoutes from './session/session.routes.js';
 import agoraRoutes from './agora/agoraRoutes.js'
 import communicationRoutes from './agora/communicationRoutes.js'
+import chatRoutes from './chat/chatRoutes.js';
 
 const router = express.Router();
 
@@ -53,6 +54,7 @@ router.use('/consultant', consultantRoutes); // /api/consultant/*
 router.use('/session', sessionRoutes);     // /api/session/*
 router.use('/agora', agoraRoutes);        // /api/agora/*
 router.use('/communication', communicationRoutes); // /api/communication/*
+router.use('/chat', chatRoutes); // /api/chat/*
 
 
 export default router;

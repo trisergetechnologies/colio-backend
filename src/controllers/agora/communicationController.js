@@ -1,9 +1,14 @@
-// controllers/agora/communicationController.js
+// src/controllers/agora/communicationController.js
 import CommunicationSession from '../../models/CommunicationSession.js';
 import User from '../../models/User.js';
 import { buildRtcTokenWithUid } from '../../services/agoraTokenService.js';
 import { sendPushToDevice } from '../../services/pushService.js';
 import CallLog from '../../models/CallLog.js';
+
+import Conversation from '../../models/Conversation.js';
+import Message from '../../models/Message.js';
+import { cleanupSessionEmojis } from '../chat/inCallController.js';
+import { CALL_LOG_STATUS, generateCallLogContent } from '../../utils/chatConstants.js';
 
 export const startSession = async (req, res) => {
   try {
@@ -25,11 +30,34 @@ export const startSession = async (req, res) => {
       return res.status(404).json({ error: 'Consultant not found' });
     }
 
-    if (consultant.consultantProfile?.availabilityStatus !== 'onWork') {
-      return res.status(400).json({ error: 'Consultant is not available' });
+    // ✅ IMPROVED: Better availability status handling with specific error codes
+    const availabilityStatus = consultant.consultantProfile?.availabilityStatus || 'offWork';
+
+    if (availabilityStatus === 'offWork') {
+      return res.status(400).json({
+        error: 'Consultant is offline',
+        errorCode: 'CONSULTANT_OFFLINE',
+        availabilityStatus
+      });
     }
 
-    let ratePerMinute = consultant.consultantProfile?.ratePerMinute || 15; // voice default
+    if (availabilityStatus === 'busy') {
+      return res.status(400).json({
+        error: 'Consultant is busy on another call',
+        errorCode: 'CONSULTANT_BUSY',
+        availabilityStatus
+      });
+    }
+
+    if (availabilityStatus !== 'onWork') {
+      return res.status(400).json({
+        error: 'Consultant is not available',
+        errorCode: 'CONSULTANT_UNAVAILABLE',
+        availabilityStatus
+      });
+    }
+
+    let ratePerMinute = consultant.consultantProfile?.ratePerMinute || 15;
 
     if (type === 'video') {
       ratePerMinute = consultant.consultantProfile?.ratePerMinuteVideo || 25;
@@ -38,8 +66,8 @@ export const startSession = async (req, res) => {
     if (type === 'chat') {
       ratePerMinute = consultant.consultantProfile?.ratePerMinuteChat || 10;
     }
-    
-    const MIN_MINUTES_TO_START = 2; // require at least 2 minutes balance
+
+    const MIN_MINUTES_TO_START = 2;
 
     const customerTotalBalance =
       (customer.wallet?.main || 0) + (customer.wallet?.bonus || 0);
@@ -49,6 +77,7 @@ export const startSession = async (req, res) => {
     if (customerTotalBalance < minRequiredBalance) {
       return res.status(400).json({
         error: 'Insufficient balance to start call',
+        errorCode: 'INSUFFICIENT_BALANCE',
         required: minRequiredBalance,
         available: customerTotalBalance
       });
@@ -58,10 +87,8 @@ export const startSession = async (req, res) => {
       ratePerMinute > 0 ? Math.floor(customerTotalBalance / ratePerMinute) : 0;
     const estimatedMaxDurationSeconds = maxPossibleMinutes * 60;
 
-    // Generate channel name
     const channelName = `call-${Date.now()}-${customerId}`;
 
-    // ✅ Generate tokens with UID 0 (both customer and consultant will auto-assign UIDs)
     const rtcTokenCustomer = buildRtcTokenWithUid(channelName, 0);
     const rtcTokenConsultant = buildRtcTokenWithUid(channelName, 0);
 
@@ -69,7 +96,11 @@ export const startSession = async (req, res) => {
     console.log('   Customer token (first 30):', rtcTokenCustomer.substring(0, 30));
     console.log('   Consultant token (first 30):', rtcTokenConsultant.substring(0, 30));
 
-    // Create session
+    // ✅ Set consultant to BUSY before creating session
+    consultant.consultantProfile.availabilityStatus = 'busy';
+    await consultant.save();
+    console.log('📞 Consultant set to busy:', consultantId);
+
     const session = await CommunicationSession.create({
       customer: customerId,
       consultant: consultantId,
@@ -77,15 +108,14 @@ export const startSession = async (req, res) => {
       status: 'ringing',
       agora: {
         channelName,
-        customerAccount: customerId.toString(), // Keep for reference
-        consultantAccount: consultantId.toString(), // Keep for reference
+        customerAccount: customerId.toString(),
+        consultantAccount: consultantId.toString(),
         rtcTokenCustomer,
         rtcTokenConsultant,
       },
       ratePerMinute
     });
 
-    // NEW: create basic CallLog entry (helps with history + duration)
     await CallLog.create({
       caller: customerId,
       receiver: consultantId,
@@ -96,10 +126,9 @@ export const startSession = async (req, res) => {
       initiatedAt: new Date()
     });
 
-    // Send push notification to consultant
     if (consultant.fcmToken) {
       console.log('📤 Sending push to consultant');
-      
+
       await sendPushToDevice(
         consultant.fcmToken,
         `Incoming ${type} call`,
@@ -114,13 +143,12 @@ export const startSession = async (req, res) => {
           estimatedMaxDurationSeconds
         }
       );
-      
+
       console.log('✅ Push notification sent');
     } else {
       console.warn('⚠️ Consultant has no FCM token');
     }
 
-    // Return to customer
     res.json({
       ok: true,
       session: {
@@ -149,8 +177,8 @@ export const getRtcToken = async (req, res) => {
     }
 
     const isCustomer = session.customer.toString() === userId;
-    const rtcToken = isCustomer 
-      ? session.agora.rtcTokenCustomer 
+    const rtcToken = isCustomer
+      ? session.agora.rtcTokenCustomer
       : session.agora.rtcTokenConsultant;
 
     if (session.status === 'ringing') {
@@ -173,7 +201,7 @@ export const getRtcToken = async (req, res) => {
 
 export const endSession = async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const { sessionId, endReason } = req.body;
     const userId = req.user.userId;
 
     const session = await CommunicationSession.findById(sessionId);
@@ -181,7 +209,7 @@ export const endSession = async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    // NEW: guard against double-ending / double-billing
+    // Guard against double-ending / double-billing
     if (session.status === 'ended' && session.isBilled) {
       return res.json({ ok: true, session });
     }
@@ -190,17 +218,20 @@ export const endSession = async (req, res) => {
     session.endedAt = new Date();
     session.endedBy = userId;
 
-     if (session.startedAt && !session.isBilled) {
+    // ✅ Reset consultant availability to 'onWork'
+    await User.findByIdAndUpdate(session.consultant, {
+      'consultantProfile.availabilityStatus': 'onWork'
+    });
+    console.log('📞 Consultant set back to onWork:', session.consultant);
+
+    if (session.startedAt && !session.isBilled) {
       const endedAt = session.endedAt || new Date();
       const durationMs = endedAt - session.startedAt;
       const totalDurationSeconds = Math.floor(durationMs / 1000);
 
-      // Only bill if positive duration
       if (totalDurationSeconds > 0) {
-        // 1-minute rounding (ceil)
         const minutes = Math.max(1, Math.ceil(totalDurationSeconds / 60));
 
-        // Reload customer & consultant for wallet changes
         const [customer, consultant] = await Promise.all([
           User.findById(session.customer),
           User.findById(session.consultant),
@@ -214,9 +245,8 @@ export const endSession = async (req, res) => {
             consultant.consultantProfile?.ratePerMinute ||
             0;
 
-          const intendedAmount = minutes * ratePerMinute; // expected charge
+          const intendedAmount = minutes * ratePerMinute;
 
-          // NEW: basic wallet-based billing, bonus first, then main
           let remainingToBill = intendedAmount;
 
           const customerMain = customer.wallet?.main || 0;
@@ -230,31 +260,21 @@ export const endSession = async (req, res) => {
 
           const totalDebited = bonusToDeduct + mainToDeduct;
 
-          // Deduct from customer
           customer.wallet.bonus = customerBonus - bonusToDeduct;
           customer.wallet.main = customerMain - mainToDeduct;
 
           if (consultant.consultantProfile?.wallet) {
+            const consultantShare = Math.round(totalDebited * 0.40);
 
-            const consultantShare = Math.round(totalDebited * 0.40); // 40%
-            const companyShare = totalDebited - consultantShare;       // 60%
-
-            // Credit the consultant their share
             consultant.consultantProfile.wallet.pending += consultantShare;
             consultant.consultantProfile.wallet.totalEarned += consultantShare;
-
-            // OPTIONAL: If you ever want to store company's earnings:
-            // session.companyCommission = companyShare;
-            // (No schema change required if you skip this)
           }
 
-          // Update session billing fields
           session.totalDurationSeconds = totalDurationSeconds;
           session.billedAmount = totalDebited;
           session.ratePerMinute = ratePerMinute;
           session.isBilled = true;
 
-          // Persist wallet + session changes
           await Promise.all([
             customer.save(),
             consultant.save()
@@ -265,16 +285,21 @@ export const endSession = async (req, res) => {
 
     await session.save();
 
+    // Update CallLog
     const callLog = await CallLog.findOne({ sessionId: session._id });
     if (callLog) {
       callLog.endedAt = session.endedAt;
       callLog.status = 'ended';
-      callLog.endReason = 'completed'; // you can adjust based on more context
-
-      // Use existing instance method to compute duration
+      callLog.endReason = endReason || 'completed';
       callLog.calculateDuration();
       await callLog.save();
     }
+
+    // ✅ CREATE CALL LOG MESSAGE IN CHAT
+    await createCallLogMessage(session, endReason || 'completed');
+
+    // ✅ Cleanup in-memory emojis for this session
+    cleanupSessionEmojis(session._id);
 
     res.json({ ok: true, session });
   } catch (err) {
@@ -286,7 +311,7 @@ export const endSession = async (req, res) => {
 export const getIncomingCalls = async (req, res) => {
   try {
     const consultantId = req.user.userId;
-    
+
     console.log('📞 Checking incoming calls for consultant:', consultantId);
 
     const pendingSessions = await CommunicationSession.find({
@@ -294,9 +319,9 @@ export const getIncomingCalls = async (req, res) => {
       status: 'ringing',
       createdAt: { $gte: new Date(Date.now() - 60000) }
     })
-    .populate('customer', 'name avatar')
-    .sort({ createdAt: -1 })
-    .limit(5);
+      .populate('customer', 'name avatar')
+      .sort({ createdAt: -1 })
+      .limit(5);
 
     console.log('📋 Found', pendingSessions.length, 'pending calls');
 
@@ -321,9 +346,9 @@ export const getIncomingCalls = async (req, res) => {
 
   } catch (err) {
     console.error('❌ getIncomingCalls error:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Server error' 
+      error: 'Server error'
     });
   }
 };
@@ -334,9 +359,9 @@ export const answerCall = async (req, res) => {
     const { sessionId } = req.body;
 
     if (!sessionId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'sessionId required' 
+        error: 'sessionId required'
       });
     }
 
@@ -347,9 +372,9 @@ export const answerCall = async (req, res) => {
     });
 
     if (!session) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        error: 'Call not found or already answered' 
+        error: 'Call not found or already answered'
       });
     }
 
@@ -379,9 +404,174 @@ export const answerCall = async (req, res) => {
 
   } catch (err) {
     console.error('❌ answerCall error:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Server error' 
+      error: 'Server error'
     });
   }
 };
+
+// ✅ NEW: Decline incoming call
+export const declineCall = async (req, res) => {
+  try {
+    const consultantId = req.user.userId;
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: 'sessionId required' });
+    }
+
+    const session = await CommunicationSession.findOne({
+      _id: sessionId,
+      consultant: consultantId,
+      status: 'ringing'
+    });
+
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Call not found' });
+    }
+
+    session.status = 'ended';
+    session.endedAt = new Date();
+    session.endedBy = consultantId;
+    await session.save();
+
+    // Reset consultant availability
+    await User.findByIdAndUpdate(consultantId, {
+      'consultantProfile.availabilityStatus': 'onWork'
+    });
+    console.log('📞 Call declined, consultant set to onWork:', consultantId);
+
+    // Update call log
+    await CallLog.findOneAndUpdate(
+      { sessionId: session._id },
+      {
+        status: 'declined',
+        endReason: 'declined',
+        endedAt: new Date()
+      }
+    );
+
+    // Create call log message in chat
+    await createCallLogMessage(session, 'declined');
+
+    // Cleanup emojis
+    cleanupSessionEmojis(session._id);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ declineCall error:', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+};
+
+// ✅ NEW: Handle missed call (timeout - no answer)
+export const missedCall = async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    const userId = req.user.userId;
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: 'sessionId required' });
+    }
+
+    const session = await CommunicationSession.findOne({
+      _id: sessionId,
+      $or: [{ customer: userId }, { consultant: userId }],
+      status: 'ringing'
+    });
+
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Session not found' });
+    }
+
+    session.status = 'ended';
+    session.endedAt = new Date();
+    session.endedBy = userId;
+    await session.save();
+
+    // Reset consultant availability
+    await User.findByIdAndUpdate(session.consultant, {
+      'consultantProfile.availabilityStatus': 'onWork'
+    });
+    console.log('📞 Call missed, consultant set to onWork:', session.consultant);
+
+    // Update call log
+    await CallLog.findOneAndUpdate(
+      { sessionId: session._id },
+      {
+        status: 'missed',
+        endReason: 'no_answer',
+        endedAt: new Date()
+      }
+    );
+
+    // Create call log message in chat
+    await createCallLogMessage(session, 'no_answer');
+
+    // Cleanup emojis
+    cleanupSessionEmojis(session._id);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ missedCall error:', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+};
+
+// ✅ NEW: Helper function to create call log message in conversation
+async function createCallLogMessage(session, endReason) {
+  try {
+    // Find or create conversation between customer and consultant
+    const conversation = await Conversation.findOrCreateConversation(
+      session.customer,
+      session.consultant
+    );
+
+    const duration = session.totalDurationSeconds || 0;
+
+    // Determine call status
+    let status = CALL_LOG_STATUS.COMPLETED;
+
+    if (endReason === 'no_answer' || endReason === 'missed') {
+      status = CALL_LOG_STATUS.MISSED;
+    } else if (endReason === 'declined') {
+      status = CALL_LOG_STATUS.DECLINED;
+    } else if (endReason === 'busy') {
+      status = CALL_LOG_STATUS.BUSY;
+    } else if (duration === 0 && endReason !== 'completed') {
+      status = CALL_LOG_STATUS.MISSED;
+    }
+
+    // Generate human-readable content
+    const content = generateCallLogContent(session.type, status, duration);
+
+    // Create message
+    const message = await Message.create({
+      conversationId: conversation._id,
+      sender: session.endedBy || session.customer,
+      receiver: session.endedBy?.toString() === session.customer.toString()
+        ? session.consultant
+        : session.customer,
+      content,
+      messageType: 'call_log',
+      callLogData: {
+        sessionId: session._id,
+        callType: session.type,
+        duration,
+        status
+      }
+    });
+
+    // Update conversation last message
+    conversation.updateLastMessage(content, message.sender, 'call_log');
+    await conversation.save();
+
+    console.log('📝 Call log message created:', content);
+
+    return message;
+  } catch (err) {
+    console.error('❌ createCallLogMessage error:', err);
+    // Don't throw - this is a non-critical operation
+  }
+}
