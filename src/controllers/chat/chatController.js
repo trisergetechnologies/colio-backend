@@ -4,6 +4,26 @@ import Message from '../../models/Message.js';
 import User from '../../models/User.js';
 import { MESSAGE_TYPES, PAGINATION } from '../../utils/chatConstants.js';
 
+// ✅ Helper function to safely get unread count (handles both Map and plain object)
+const getUnreadCountForUser = (conversation, userId) => {
+  const userIdStr = userId.toString();
+  const unreadMap = conversation.unreadCount;
+  
+  if (!unreadMap) return 0;
+  
+  // If it's a Map (Mongoose document)
+  if (typeof unreadMap.get === 'function') {
+    return unreadMap.get(userIdStr) || 0;
+  }
+  
+  // If it's a plain object (from .lean() or JSON)
+  if (typeof unreadMap === 'object') {
+    return unreadMap[userIdStr] || 0;
+  }
+  
+  return 0;
+};
+
 /**
  * GET /api/chat/conversations
  * Get all conversations for current user
@@ -36,7 +56,7 @@ export const getConversations = async (req, res) => {
           availabilityStatus: otherParticipant?.consultantProfile?.availabilityStatus || null
         },
         lastMessage: conv.lastMessage,
-        unreadCount: conv.unreadCount?.get(userId.toString()) || 0,
+        unreadCount: getUnreadCountForUser(conv, userId), // ✅ FIXED
         updatedAt: conv.updatedAt
       };
     });
@@ -88,7 +108,7 @@ export const startConversation = async (req, res) => {
             availabilityStatus: participant.consultantProfile?.availabilityStatus || null
           },
           lastMessage: conversation.lastMessage,
-          unreadCount: conversation.unreadCount?.get(userId.toString()) || 0
+          unreadCount: getUnreadCountForUser(conversation, userId) // ✅ FIXED
         }
       }
     });
@@ -304,13 +324,7 @@ export const getUnreadCount = async (req, res) => {
 
     let totalUnread = 0;
     conversations.forEach(conv => {
-      // Handle both Map and plain object (lean() returns plain object)
-      const unreadMap = conv.unreadCount;
-      if (unreadMap instanceof Map) {
-        totalUnread += unreadMap.get(userId.toString()) || 0;
-      } else if (unreadMap) {
-        totalUnread += unreadMap[userId.toString()] || 0;
-      }
+      totalUnread += getUnreadCountForUser(conv, userId); // ✅ FIXED - use helper
     });
 
     res.json({
@@ -358,7 +372,7 @@ export const getConversation = async (req, res) => {
             availabilityStatus: otherParticipant?.consultantProfile?.availabilityStatus || null
           },
           lastMessage: conversation.lastMessage,
-          unreadCount: conversation.unreadCount?.get(userId.toString()) || 0,
+          unreadCount: getUnreadCountForUser(conversation, userId), // ✅ FIXED
           updatedAt: conversation.updatedAt
         }
       }
