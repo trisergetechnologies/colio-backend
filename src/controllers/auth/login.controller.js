@@ -69,14 +69,6 @@ export const loginUser = async (req, res) => {
     // Find user (include password only for non-Google login)
     const user = await User.findOne(userQuery).select(loginType === 'google' ? '' : '+password');
 
-    if (user.role !== role) {
-      return res.status(200).json({
-        success: false,
-        message: 'Invalid credentials',
-        data: null
-      });
-    }
-    
     if (!user) {
       return res.status(200).json({
         success: false,
@@ -85,6 +77,14 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    if (user.role !== role) {
+      return res.status(200).json({
+        success: false,
+        message: 'Invalid credentials',
+        data: null
+      });
+    }
+    
     // Check if account is locked (skip for Google login)
     if (loginType !== 'google' && user.isAccountLocked) {
       const lockTime = await settingsService.getSetting('auth.accountLockoutMinutes');
