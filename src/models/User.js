@@ -298,7 +298,6 @@ const userSchema = new mongoose.Schema(
 
 // ============= INDEXES =============
 userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ phone: 1 }, { unique: true });
 userSchema.index({ role: 1 });
 userSchema.index({ googleId: 1 }, { sparse: true });
 userSchema.index({ referralCode: 1 }, { sparse: true });
