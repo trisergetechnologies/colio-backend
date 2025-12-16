@@ -16,13 +16,26 @@ export const googleOAuth = async (req, res) => {
     }
 
     // Exchange code for access token
-    const tokenRes = await axios.post("https://oauth2.googleapis.com/token", {
-      code,
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
-      grant_type: "authorization_code",
-    });
+    let tokenRes;
+    try {
+      tokenRes = await axios.post("https://oauth2.googleapis.com/token", {
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+        grant_type: "authorization_code",
+      });
+    } catch (tokenErr) {
+      // Handle invalid_grant specifically
+      if (tokenErr?.response?.data?.error === 'invalid_grant') {
+        return res.status(200).json({
+          success: false,
+          message: "Authorization code expired or already used. Please try signing in again",
+          data: null,
+        });
+      }
+      throw tokenErr;
+    }
 
     const { access_token } = tokenRes.data;
 
