@@ -1,11 +1,11 @@
 import axios from "axios";
 import User from "../../models/User.js";
-import { googleLogin } from "./googleLoginController.js";
-import { googleRegister } from "./googleRegisterController.js";
+import { maskEmail } from "../../utils/mask.helper.js";
+import { generateTokenPair } from "../../utils/token.helper.js";
 
 export const googleOAuth = async (req, res) => {
   try {
-    const code = req.query.code;
+    const { code } = req.query;
 
     if (!code) {
       return res.status(200).json({
@@ -15,34 +15,29 @@ export const googleOAuth = async (req, res) => {
       });
     }
 
-    // 1) Exchange code → access token
-    const tokenRes = await axios.post(
-      "https://oauth2.googleapis.com/token",
-      {
-        code,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: process.env.GOOGLE_REDIRECT_URI,
-        grant_type: "authorization_code",
-      }
-    );
+    // Exchange code for access token
+    const tokenRes = await axios.post("https://oauth2.googleapis.com/token", {
+      code,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+      grant_type: "authorization_code",
+    });
 
-    const accessToken = tokenRes.data.access_token;
+    const { access_token } = tokenRes.data;
 
-    if (!accessToken) {
+    if (!access_token) {
       return res.status(200).json({
         success: false,
-        message: "Failed to obtain Google access token",
+        message: "Failed to obtain access token from Google",
         data: null,
       });
     }
 
-    // 2) Get google profile
+    // Get Google profile
     const profileRes = await axios.get(
       "https://www.googleapis.com/oauth2/v2/userinfo",
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
+      { headers: { Authorization: `Bearer ${access_token}` } }
     );
 
     const { id: googleId, email, name, picture } = profileRes.data;
@@ -50,49 +45,114 @@ export const googleOAuth = async (req, res) => {
     if (!email || !googleId) {
       return res.status(200).json({
         success: false,
-        message: "Google account does not provide email",
+        message: "Google account does not provide required information",
         data: null,
       });
     }
 
-    // 3) Check for googleId first
-    let user = await User.findOne({ googleId });
+    const normalizedEmail = email.toLowerCase();
 
-    if (user) {
-      // Google ID exists → login
-      req.body = { email, googleId };
-      return googleLogin(req, res);
-    }
+    // Find user by googleId or email
+    let user = await User.findOne({
+      $or: [{ googleId }, { email: normalizedEmail }],
+    });
 
-    // 4) GoogleId not found → Check by email
-    user = await User.findOne({ email: email.toLowerCase() });
+    // Case 1: User exists with Google ID → Login
+    if (user && user.googleId) {
+      if (!user.isActive) {
+        return res.status(200).json({
+          success: false,
+          message: "Your account has been deactivated",
+          data: null,
+        });
+      }
 
-    if (user) {
-      // Email exists → link googleId to existing user
-      user.googleId = googleId;
+      user.lastLogin = new Date();
       await user.save();
 
-      req.body = { email, googleId };
-      return googleLogin(req, res);
+      const tokens = await generateTokenPair(user);
+
+      return res.status(200).json({
+        success: true,
+        message: "Login successful",
+        data: {
+          userId: user._id,
+          name: user.name,
+          email: maskEmail(user.email),
+          role: user.role,
+          isVerified: user.isVerified,
+          isEmailVerified: user.isEmailVerified,
+          isPhoneVerified: user.isPhoneVerified || false,
+          avatar: user.avatar,
+          wallet: user.wallet,
+          ...tokens,
+        },
+      });
     }
 
-    // 5) No googleId & no email → register new user
-    req.body = {
+    // Case 2: User exists but no Google ID → Link and Login
+    if (user && !user.googleId) {
+      user.googleId = googleId;
+      user.isEmailVerified = true;
+      if (!user.avatar) user.avatar = picture;
+      user.lastLogin = new Date();
+      await user.save();
+
+      const tokens = await generateTokenPair(user);
+
+      return res.status(200).json({
+        success: true,
+        message: "Google account linked successfully",
+        data: {
+          userId: user._id,
+          name: user.name,
+          email: maskEmail(user.email),
+          role: user.role,
+          isVerified: user.isVerified,
+          isEmailVerified: user.isEmailVerified,
+          isPhoneVerified: user.isPhoneVerified || false,
+          avatar: user.avatar,
+          wallet: user.wallet,
+          ...tokens,
+        },
+      });
+    }
+
+    // Case 3: New user → Register
+    user = await User.create({
       name: name || "Google User",
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       googleId,
+      isEmailVerified: true,
       registrationType: "google",
       role: "customer",
       avatar: picture,
-    };
+      wallet: { main: 0, bonus: 0 },
+    });
 
-    return googleRegister(req, res);
+    const tokens = await generateTokenPair(user);
 
+    return res.status(200).json({
+      success: true,
+      message: "Registration successful",
+      data: {
+        userId: user._id,
+        name: user.name,
+        email: maskEmail(user.email),
+        role: user.role,
+        isVerified: user.isVerified,
+        isEmailVerified: true,
+        isPhoneVerified: false,
+        avatar: user.avatar,
+        wallet: user.wallet,
+        ...tokens,
+      },
+    });
   } catch (err) {
     console.error("Google OAuth Error:", err?.response?.data || err);
     return res.status(500).json({
       success: false,
-      message: "Google OAuth failed",
+      message: "Google authentication failed. Please try again",
       data: null,
     });
   }

@@ -14,30 +14,32 @@ export const googleLogin = async (req, res) => {
       });
     }
 
-    // 1) Try find by googleId
-    let user = await User.findOne({ googleId });
+    const normalizedEmail = email.toLowerCase();
+
+    // Find by googleId first, then by email
+    let user = await User.findOne({
+      $or: [{ googleId }, { email: normalizedEmail }],
+    });
 
     if (!user) {
-      // 2) googleId missing, check by email
-      user = await User.findOne({ email: email.toLowerCase() });
+      return res.status(200).json({
+        success: false,
+        message: "Account not found. Please register first",
+        data: null,
+      });
+    }
 
-      if (!user) {
-        return res.status(200).json({
-          success: false,
-          message: "Google account not registered",
-          data: null,
-        });
-      }
-
-      // 3) Link googleId to existing email-based user
+    // Link Google ID if missing
+    if (!user.googleId) {
       user.googleId = googleId;
+      user.isEmailVerified = true;
       await user.save();
     }
 
     if (!user.isActive) {
       return res.status(200).json({
         success: false,
-        message: "Account deactivated",
+        message: "Your account has been deactivated",
         data: null,
       });
     }
@@ -50,24 +52,25 @@ export const googleLogin = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Google login successful",
+      message: "Login successful",
       data: {
         userId: user._id,
         name: user.name,
+        email: maskEmail(user.email),
         role: user.role,
         isVerified: user.isVerified,
         isEmailVerified: user.isEmailVerified,
+        isPhoneVerified: user.isPhoneVerified || false,
         avatar: user.avatar,
-        loginType: "google",
+        wallet: user.wallet,
         ...tokens,
-        email: maskEmail(user.email),
       },
     });
   } catch (err) {
     console.error("Google Login Error:", err);
     return res.status(500).json({
       success: false,
-      message: "Login failed",
+      message: "Login failed. Please try again",
       data: null,
     });
   }
