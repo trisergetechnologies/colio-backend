@@ -40,7 +40,13 @@ const userSchema = new mongoose.Schema(
       },
       unique: true,
       trim: true,
-      match: [/^[+]?[1-9]\d{1,14}$/, 'Please provide a valid phone number']
+      match: [/^[+]?[1-9]\d{1,14}$/, 'Please provide a valid phone number'],
+      validate: {
+        validator: function (v) {
+          return !v || /^[0-9]{10}$/.test(v); // Validate only if phone exists
+        },
+        message: props => `${props.value} is not a valid phone number!`
+      }
     },
     
     password: {
