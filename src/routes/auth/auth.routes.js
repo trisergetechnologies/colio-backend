@@ -21,6 +21,7 @@ import {
 import { googleRegister } from '../../controllers/auth/googleRegisterController.js';
 import { googleLogin } from '../../controllers/auth/googleLoginController.js';
 import { googleOAuth } from '../../controllers/auth/googleOAuthController.js';
+import { googleMobileAuth } from '../../controllers/auth/googleMobileAuth.js';
 
 const router = express.Router();
 
@@ -41,6 +42,7 @@ router.post('/login',
 router.post("/google-register", authRateLimit, googleRegister);
 router.post("/google-login", authRateLimit, googleLogin);
 router.get("/google/oauth", googleOAuth);
+router.post("/google/mobile", authRateLimit, googleMobileAuth);
 
 router.post('/logout',
     authMiddleware,
