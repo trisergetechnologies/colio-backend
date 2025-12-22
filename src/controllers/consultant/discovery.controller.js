@@ -248,7 +248,7 @@ export const quickConnect = async (req, res) => {
  */
 export const getConsultantDetails = async (req, res) => {
   try {
-    const { id: consultantId } = req.params;
+    const { id: consultant  Id } = req.params;
     const customerId = req.user.userId;
     
     // Find consultant

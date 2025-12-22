@@ -9,6 +9,7 @@ import {
   updateAvailability, 
   getAvailabilityStatus 
 } from '../../controllers/consultant/availability.controller.js';
+import { getConsultantPerformance } from '../../controllers/consultant/performance.controller.js';
 // import { acceptSession, declineSession } from '../../controllers/session/session.controller.js';
 
 const router = express.Router();
@@ -25,6 +26,7 @@ router.put('/availability',
 );
 
 router.get('/status', getAvailabilityStatus);
+router.get('/performance', getConsultantPerformance);
 
 // Session Management
 // router.post('/session/:id/accept', acceptSession);
