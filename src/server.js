@@ -8,6 +8,7 @@ import connectDB from './config/db.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { apiRateLimit } from './middlewares/rateLimit.middleware.js';
 import apiRoutes from './routes/index.js';
+import { startSessionBillingJob } from './jobs/sessionBilling.job.js';
 
 // Load environment variables
 dotenv.config();
@@ -29,6 +30,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Static files middleware for uploaded files
 app.use('/uploads', express.static('uploads'));
+startSessionBillingJob();
 
 // Global rate limiting
 app.use(apiRateLimit);

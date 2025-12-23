@@ -9,6 +9,7 @@ import Conversation from '../../models/Conversation.js';
 import Message from '../../models/Message.js';
 import { cleanupSessionEmojis } from '../chat/inCallController.js';
 import { CALL_LOG_STATUS, generateCallLogContent } from '../../utils/chatConstants.js';
+import { billRemainingMinutes } from '../../services/sessionBilling.service.js';
 
 export const startSession = async (req, res) => {
   try {
@@ -215,7 +216,7 @@ export const endSession = async (req, res) => {
     }
 
     session.status = 'ended';
-    session.endedAt = new Date();
+    session.endedAt = session.endedAt || new Date(); // idempotent-safe
     session.endedBy = userId;
 
     // ✅ Reset consultant availability to 'onWork'
@@ -224,63 +225,25 @@ export const endSession = async (req, res) => {
     });
     console.log('📞 Consultant set back to onWork:', session.consultant);
 
+    /* ======================================
+      FINAL RECONCILIATION (CORE LOGIC)
+      ====================================== */
     if (session.startedAt && !session.isBilled) {
-      const endedAt = session.endedAt || new Date();
-      const durationMs = endedAt - session.startedAt;
-      const totalDurationSeconds = Math.floor(durationMs / 1000);
+      const totalSeconds = Math.floor(
+        (session.endedAt - session.startedAt) / 1000
+      );
 
-      if (totalDurationSeconds > 0) {
-        const minutes = Math.max(1, Math.ceil(totalDurationSeconds / 60));
+      const billableMinutes = Math.ceil(totalSeconds / 60);
+      const alreadyBilled = session.billedMinutes || 0;
 
-        const [customer, consultant] = await Promise.all([
-          User.findById(session.customer),
-          User.findById(session.consultant),
-        ]);
+      const remainingMinutes = billableMinutes - alreadyBilled;
 
-        if (!customer || !consultant) {
-          console.warn('⚠️ Customer or consultant not found during billing');
-        } else {
-          const ratePerMinute =
-            session.ratePerMinute ||
-            consultant.consultantProfile?.ratePerMinute ||
-            0;
-
-          const intendedAmount = minutes * ratePerMinute;
-
-          let remainingToBill = intendedAmount;
-
-          const customerMain = customer.wallet?.main || 0;
-          const customerBonus = customer.wallet?.bonus || 0;
-
-          let bonusToDeduct = Math.min(customerBonus, remainingToBill);
-          remainingToBill -= bonusToDeduct;
-
-          let mainToDeduct = Math.min(customerMain, remainingToBill);
-          remainingToBill -= mainToDeduct;
-
-          const totalDebited = bonusToDeduct + mainToDeduct;
-
-          customer.wallet.bonus = customerBonus - bonusToDeduct;
-          customer.wallet.main = customerMain - mainToDeduct;
-
-          if (consultant.consultantProfile?.wallet) {
-            const consultantShare = Math.round(totalDebited * 0.40);
-
-            consultant.consultantProfile.wallet.pending += consultantShare;
-            consultant.consultantProfile.wallet.totalEarned += consultantShare;
-          }
-
-          session.totalDurationSeconds = totalDurationSeconds;
-          session.billedAmount = totalDebited;
-          session.ratePerMinute = ratePerMinute;
-          session.isBilled = true;
-
-          await Promise.all([
-            customer.save(),
-            consultant.save()
-          ]);
-        }
+      if (remainingMinutes > 0) {
+        await billRemainingMinutes(session._id, remainingMinutes);
       }
+
+      session.totalDurationSeconds = totalSeconds;
+      session.isBilled = true;
     }
 
     await session.save();

@@ -3,6 +3,7 @@ import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import { sessionParticipantMiddleware, activeSessionMiddleware } from '../../middlewares/session.middleware.js';
 // import { validateRequest, validationSchemas } from '../../middlewares/validation.middleware.js';
 import { messageRateLimit, uploadRateLimit } from '../../middlewares/rateLimit.middleware.js';
+import { canContinueSession } from '../../controllers/session/sessionPolling.controller.js';
 
 
 
@@ -17,6 +18,12 @@ router.post('/:sessionId/upload',
   sessionParticipantMiddleware,
   activeSessionMiddleware,
   (req,res)=>{console.log("hey")}
+);
+
+router.get(
+  '/:sessionId/can-continue',
+  authMiddleware,
+  canContinueSession
 );
 
 export default router;

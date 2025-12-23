@@ -31,6 +31,31 @@ const communicationSessionSchema = new mongoose.Schema(
       default: false 
     },
 
+    billedMinutes: {
+      type: Number,
+      default: 0
+    },
+
+    lastBilledAt: {
+      type: Date,
+      default: null
+    },
+
+    systemEarning: {
+      type: Number,
+      default: 0
+    },
+
+    consultantEarning: {
+      type: Number,
+      default: 0
+    },
+    
+    bonusUsed: {
+      type: Number,
+      default: 0
+    },
+
     endedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     autoEnded: { type: Boolean, default: false },
 
