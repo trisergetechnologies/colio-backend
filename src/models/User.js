@@ -277,6 +277,34 @@ const userSchema = new mongoose.Schema(
       default: 0
     },
 
+    deviceInfo: {
+      platform: {
+        type: String,
+        enum: ['ios', 'android', 'web'],
+      },
+      brand: String,
+      modelName: String,
+      osVersion: String,
+      lastUpdated: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    notificationSettings: {
+      enabled: {
+        type: Boolean,
+        default: true,
+      },
+      callNotifications: {
+        type: Boolean,
+        default: true,
+      },
+      messageNotifications: {
+        type: Boolean,
+        default: true,
+      },
+    },
+
     // ============= METADATA =============
     lastLogin: {
       type: Date
