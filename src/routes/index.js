@@ -10,6 +10,7 @@ import sessionRoutes from './session/session.routes.js';
 import agoraRoutes from './agora/agoraRoutes.js'
 import communicationRoutes from './agora/communicationRoutes.js'
 import chatRoutes from './chat/chatRoutes.js';
+import adminRoutes from './admin/adminRoutes.js';
 
 const router = express.Router();
 
@@ -48,6 +49,7 @@ router.get('/', (req, res) => {
 
 // Mount route modules
 router.use('/auth', authRoutes);           // /api/auth/*
+router.use('/admin', adminRoutes);         // /api/admin/*
 router.use('/user', userRoutes);           // /api/user/*
 router.use('/customer', customerRoutes);   // /api/customer/*
 router.use('/consultant', consultantRoutes); // /api/consultant/*
