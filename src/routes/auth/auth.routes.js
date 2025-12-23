@@ -22,6 +22,7 @@ import { googleRegister } from '../../controllers/auth/googleRegisterController.
 import { googleLogin } from '../../controllers/auth/googleLoginController.js';
 import { googleOAuth } from '../../controllers/auth/googleOAuthController.js';
 import { googleMobileAuth } from '../../controllers/auth/googleMobileAuth.js';
+import { adminLogin } from '../../controllers/auth/adminAuthController.js';
 
 const router = express.Router();
 
@@ -37,6 +38,12 @@ router.post('/login',
     authRateLimit,
     // validateRequest(validationSchemas.login),
     loginUser
+);
+
+router.post('/login-admin',
+    authRateLimit,
+    // validateRequest(validationSchemas.login),
+    adminLogin
 );
 
 router.post("/google-register", authRateLimit, googleRegister);
