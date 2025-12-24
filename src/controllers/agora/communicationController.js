@@ -2,7 +2,7 @@
 import CommunicationSession from '../../models/CommunicationSession.js';
 import User from '../../models/User.js';
 import { buildRtcTokenWithUid } from '../../services/agoraTokenService.js';
-import { sendPushToDevice } from '../../services/pushService.js';
+import firebaseService from '../../services/firebaseService.js';
 import CallLog from '../../models/CallLog.js';
 
 import Conversation from '../../models/Conversation.js';
@@ -128,24 +128,35 @@ export const startSession = async (req, res) => {
     });
 
     if (consultant.fcmToken) {
-      console.log('📤 Sending push to consultant');
+      console.log('📤 Sending Firebase notification to consultant');
 
-      await sendPushToDevice(
+      const callData = {
+        sessionId: session._id.toString(),
+        callType: type,
+        channelName,
+        customerId: customerId.toString(),
+        customerName: customer.name || 'Unknown User',
+        customerAvatar: customer.avatar || '',
+        rtcToken: rtcTokenConsultant,
+        ratePerMinute,
+        estimatedMaxDurationSeconds
+      };
+
+      const notificationResult = await firebaseService.sendCallNotification(
         consultant.fcmToken,
-        `Incoming ${type} call`,
-        `${customer.name} is calling you`,
-        {
-          type: 'incoming_call',
-          sessionId: session._id.toString(),
-          callType: type,
-          customerName: customer.name,
-          customerAvatar: customer.avatar || '',
-          channelName,
-          estimatedMaxDurationSeconds
-        }
+        callData
       );
 
-      console.log('✅ Push notification sent');
+      if (notificationResult.success) {
+        console.log('✅ Push notification sent successfully');
+      } else if (notificationResult.invalidToken) {
+        console.warn('⚠️ Invalid FCM token, removing from consultant');
+        await User.findByIdAndUpdate(consultantId, {
+          $unset: { fcmToken: 1 }
+        });
+      } else {
+        console.error('❌ Failed to send notification');
+      }
     } else {
       console.warn('⚠️ Consultant has no FCM token');
     }
@@ -297,6 +308,7 @@ export const getIncomingCalls = async (req, res) => {
       customerId: session.customer._id.toString(),
       createdAt: session.createdAt,
       ratePerMinute: session.ratePerMinute,
+      rtcToken: session.agora.rtcTokenConsultant,
     }));
 
     res.json({
