@@ -11,7 +11,6 @@ import agoraRoutes from './agora/agoraRoutes.js'
 import communicationRoutes from './agora/communicationRoutes.js'
 import chatRoutes from './chat/chatRoutes.js';
 import adminRoutes from './admin/adminRoutes.js';
-import notificationRoutes from './user/notificationRoutes.js';
 
 const router = express.Router();
 
@@ -58,7 +57,6 @@ router.use('/session', sessionRoutes);     // /api/session/*
 router.use('/agora', agoraRoutes);        // /api/agora/*
 router.use('/communication', communicationRoutes); // /api/communication/*
 router.use('/chat', chatRoutes); // /api/chat/*
-router.use('/notification', notificationRoutes);
 
 
 export default router;

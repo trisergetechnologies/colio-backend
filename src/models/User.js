@@ -10,10 +10,7 @@ const userSchema = new mongoose.Schema(
       minlength: [2, 'Name must be at least 2 characters'],
       maxlength: [50, 'Name cannot exceed 50 characters']
     },
-    fcmToken: {
-      type: String,
-      default: null
-    },
+
   //   username: {
   //   type: String,
   //   required: true,
@@ -277,14 +274,17 @@ const userSchema = new mongoose.Schema(
       default: 0
     },
 
+    fcmToken: {
+      type: String,
+      default: null
+    },
+
     deviceInfo: {
       platform: {
         type: String,
         enum: ['ios', 'android', 'web'],
       },
-      brand: String,
-      modelName: String,
-      osVersion: String,
+      version: String,
       lastUpdated: {
         type: Date,
         default: Date.now,

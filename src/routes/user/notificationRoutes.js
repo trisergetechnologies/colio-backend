@@ -1,19 +1,15 @@
+// routes/notificationRoutes.js
 import express from 'express';
-import firebaseService from '../../services/firebaseService.js';
-import User from '../../models/User.js';
-import { authMiddleware } from '../../middlewares/auth.middleware.js';
+// import User from '../models/User.js';
+// import firebaseService from '../services/firebaseService.js';
 
 const router = express.Router();
-
-
-
-router.use(authMiddleware);
 
 // Register/Update FCM Token (called after login)
 router.post('/register-token', async (req, res) => {
   try {
     const { fcmToken, platform, deviceInfo } = req.body;
-    const userId = req.user.userId; // from authenticateToken middleware
+    const userId = req.user.userId; // From authenticateToken middleware
 
     if (!fcmToken) {
       return res.status(400).json({
@@ -28,9 +24,7 @@ router.post('/register-token', async (req, res) => {
       {
         fcmToken: fcmToken,
         'deviceInfo.platform': platform,
-        'deviceInfo.brand': deviceInfo?.brand,
-        'deviceInfo.modelName': deviceInfo?.modelName,
-        'deviceInfo.osVersion': deviceInfo?.osVersion,
+        'deviceInfo.version': deviceInfo?.version,
         'deviceInfo.lastUpdated': new Date(),
       },
       { new: true }
@@ -46,7 +40,18 @@ router.post('/register-token', async (req, res) => {
     console.log(`✅ FCM token registered for user: ${user.name || user.phone}`);
 
     // Send welcome notification
-    const welcomeResult = await sendWelcomeNotification(user);
+    const welcomeResult = await firebaseService.sendWelcomeNotification(
+      fcmToken,
+      user.name
+    );
+
+    // If token is invalid, remove it
+    if (welcomeResult.invalidToken) {
+      await User.findByIdAndUpdate(userId, {
+        $unset: { fcmToken: 1 },
+      });
+      console.log('🗑️ Removed invalid FCM token');
+    }
 
     res.json({
       success: true,
@@ -62,41 +67,6 @@ router.post('/register-token', async (req, res) => {
     });
   }
 });
-
-// Helper: Send Welcome Notification
-async function sendWelcomeNotification(user) {
-  if (!user.fcmToken) {
-    return { success: false, reason: 'No FCM token' };
-  }
-
-  try {
-    const result = await firebaseService.sendNotification(
-      user.fcmToken,
-      {
-        title: '🎉 Welcome to Colio!',
-        body: `Hi ${user.name || 'there'}! We're excited to help you connect with amazing people.`,
-      },
-      {
-        type: 'welcome',
-        userId: user._id.toString(),
-        channelId: 'default',
-      }
-    );
-
-    // If token is invalid, remove it
-    if (result.invalidToken) {
-      await User.findByIdAndUpdate(user._id, {
-        $unset: { fcmToken: 1 },
-      });
-      console.log('🗑️ Removed invalid FCM token');
-    }
-
-    return result;
-  } catch (error) {
-    console.error('❌ Error sending welcome notification:', error);
-    return { success: false, error: error.message };
-  }
-}
 
 // Remove FCM Token (called on logout)
 router.post('/remove-token', async (req, res) => {
@@ -123,7 +93,90 @@ router.post('/remove-token', async (req, res) => {
   }
 });
 
-// Test endpoint - Send custom notification
+// Send notification to specific user (for testing or admin use)
+router.post('/send', async (req, res) => {
+  try {
+    const { userId, title, body, data } = req.body;
+
+    const user = await User.findById(userId);
+    
+    if (!user || !user.fcmToken) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found or FCM token not registered',
+      });
+    }
+
+    const result = await firebaseService.sendNotification(
+      user.fcmToken,
+      { title, body },
+      data || {}
+    );
+
+    // If token is invalid, remove it
+    if (result.invalidToken) {
+      await User.findByIdAndUpdate(userId, {
+        $unset: { fcmToken: 1 },
+      });
+    }
+
+    res.json({
+      success: result.success,
+      message: result.success ? 'Notification sent successfully' : 'Failed to send notification',
+      messageId: result.messageId,
+    });
+  } catch (error) {
+    console.error('❌ Error sending notification:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send notification',
+      error: error.message,
+    });
+  }
+});
+
+// Send call notification to expert (will be used later)
+router.post('/send-call', async (req, res) => {
+  try {
+    const { expertId, callData } = req.body;
+
+    const expert = await User.findById(expertId);
+    
+    if (!expert || !expert.fcmToken) {
+      return res.status(404).json({
+        success: false,
+        message: 'Expert not found or FCM token not registered',
+      });
+    }
+
+    const result = await firebaseService.sendCallNotification(
+      expert.fcmToken,
+      callData
+    );
+
+    // If token is invalid, remove it
+    if (result.invalidToken) {
+      await User.findByIdAndUpdate(expertId, {
+        $unset: { fcmToken: 1 },
+      });
+    }
+
+    res.json({
+      success: result.success,
+      message: result.success ? 'Call notification sent successfully' : 'Failed to send notification',
+      messageId: result.messageId,
+    });
+  } catch (error) {
+    console.error('❌ Error sending call notification:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send call notification',
+      error: error.message,
+    });
+  }
+});
+
+// Test endpoint - Send test notification to yourself
 router.post('/send-test', async (req, res) => {
   try {
     const { title, body } = req.body;

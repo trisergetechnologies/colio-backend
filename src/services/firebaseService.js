@@ -1,16 +1,38 @@
+// services/firebaseService.js
 import admin from 'firebase-admin';
-import { createRequire } from 'module';
+import { readFile } from 'fs/promises';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const require = createRequire(import.meta.url);
-const serviceAccount = require('../config/firebase-service-account.json');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// Initialize Firebase Admin SDK (only once)
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    projectId: 'colio-website-test1',
-  });
-}
+// Initialize Firebase Admin SDK
+let firebaseInitialized = false;
+
+const initializeFirebase = async () => {
+  if (firebaseInitialized) return;
+
+  try {
+    const serviceAccountPath = join(__dirname, '../config/firebase-service-account.json');
+    const serviceAccountFile = await readFile(serviceAccountPath, 'utf8');
+    const serviceAccount = JSON.parse(serviceAccountFile);
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      projectId: 'colio-website-test1',
+    });
+
+    firebaseInitialized = true;
+    console.log('✅ Firebase Admin initialized successfully');
+  } catch (error) {
+    console.error('❌ Error initializing Firebase Admin:', error);
+    throw error;
+  }
+};
+
+// Initialize Firebase on module load
+await initializeFirebase();
 
 class FirebaseService {
   
@@ -37,14 +59,8 @@ class FirebaseService {
           color: '#8900ae',
           sound: 'default',
           priority: 'max',
-        },
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: 'default',
-            badge: 1,
-          },
+          defaultSound: true,
+          defaultVibrateTimings: true,
         },
       },
     };
@@ -90,6 +106,7 @@ class FirebaseService {
           channelId: data.channelId || 'default',
           color: '#8900ae',
           sound: 'default',
+          defaultSound: true,
         },
       },
     };
@@ -139,19 +156,11 @@ class FirebaseService {
           color: '#d946ef',
           sound: 'default',
           priority: 'max',
+          defaultSound: true,
+          defaultVibrateTimings: true,
           visibility: 'public',
           tag: callData.callId,
           sticky: true,
-        },
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: 'default',
-            badge: 1,
-            category: 'INCOMING_CALL',
-            'content-available': 1,
-          },
         },
       },
     };
@@ -172,6 +181,21 @@ class FirebaseService {
       
       throw error;
     }
+  }
+
+  // Send welcome notification
+  async sendWelcomeNotification(fcmToken, userName) {
+    return await this.sendNotification(
+      fcmToken,
+      {
+        title: '🎉 Welcome to Colio!',
+        body: `Hi ${userName || 'there'}! We're excited to help you connect with amazing people.`,
+      },
+      {
+        type: 'welcome',
+        channelId: 'default',
+      }
+    );
   }
 }
 
