@@ -2,8 +2,12 @@
 import express from 'express';
 import User from '../../models/User.js';
 import firebaseService from '../../services/firebaseService.js';
+import { authMiddleware } from '../../middlewares/auth.middleware.js';
 
 const router = express.Router();
+
+
+router.use(authMiddleware);
 
 // Register/Update FCM Token (called after login)
 router.post('/register-token', async (req, res) => {
