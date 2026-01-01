@@ -4,6 +4,7 @@ import { sessionParticipantMiddleware, activeSessionMiddleware } from '../../mid
 // import { validateRequest, validationSchemas } from '../../middlewares/validation.middleware.js';
 import { messageRateLimit, uploadRateLimit } from '../../middlewares/rateLimit.middleware.js';
 import { canContinueSession } from '../../controllers/session/sessionPolling.controller.js';
+import { getSessionStatus } from '../../controllers/session/session.controller.js';
 
 
 
@@ -25,5 +26,6 @@ router.get(
   authMiddleware,
   canContinueSession
 );
+router.get('/:sessionId/status', authMiddleware, getSessionStatus);
 
 export default router;

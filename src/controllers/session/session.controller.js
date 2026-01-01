@@ -112,3 +112,50 @@ export const getUserCommunicationSessions = async (req, res) => {
     });
   }
 };
+
+// ✅ NEW: Get single session status by ID
+export const getSessionStatus = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { sessionId } = req.params;
+
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'sessionId required'
+      });
+    }
+
+    const session = await CommunicationSession.findOne({
+      _id: sessionId,
+      $or: [
+        { customer: userId },
+        { consultant: userId }
+      ]
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        sessionId: session._id,
+        status: session.status,
+        endedAt: session.endedAt,
+        endedBy: session.endedBy
+      }
+    });
+
+  } catch (err) {
+    console.error('getSessionStatus error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
