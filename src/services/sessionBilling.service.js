@@ -52,6 +52,9 @@ export async function billOneMinute(sessionId) {
 
     const mainToUse = rate - bonusToUse;
 
+    console.log("customer.wallet.main", customer.wallet.main);
+    console.log("mainToUse", mainToUse);
+
     if (customer.wallet.main < mainToUse) {
       session.status = 'ended';
       session.autoEnded = true;
