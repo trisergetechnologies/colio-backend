@@ -148,7 +148,9 @@ export const getSessionStatus = async (req, res) => {
         status: session.status,
         autoEnded: session.autoEnded || false,
         endedAt: session.endedAt,
-        endedBy: session.endedBy
+        endedBy: session.endedBy,
+        billedMinutes: session.billedMinutes || 0,
+        billedAmount: session.billedAmount || 0
       }
     });
 
