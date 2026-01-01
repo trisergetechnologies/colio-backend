@@ -4,9 +4,6 @@ import CommunicationSession from '../models/CommunicationSession.js';
 import SystemWallet from '../models/SystemWallet.js';
 import SystemWalletLog from '../models/SystemWalletLog.js';
 import CallLog from '../models/CallLog.js';
-import Conversation from '../models/Conversation.js';
-import Message from '../models/Message.js';
-import { CALL_LOG_STATUS, generateCallLogContent } from '../utils/chatConstants.js';
 
 export async function billOneMinute(sessionId) {
   const mongoSession = await mongoose.startSession();
@@ -38,9 +35,12 @@ export async function billOneMinute(sessionId) {
     const bonusToUse = Math.min(remainingBonusAllowed, bonusAvailable, rate);
     const mainToUse = rate - bonusToUse;
 
+    const totalAvailable = (customer.wallet.main || 0) + (customer.wallet.bonus || 0);
+
     console.log("📊 Balance check:", {
       walletMain: customer.wallet.main,
       walletBonus: customer.wallet.bonus,
+      totalAvailable,
       rate,
       bonusToUse,
       mainToUse
@@ -49,45 +49,31 @@ export async function billOneMinute(sessionId) {
     /* ============================
        INSUFFICIENT BALANCE - END CALL
     ============================ */
-    // ✅ Use <= instead of < to catch exact match case
-    const hasInsufficientBalance = 
-      customer.wallet.main < mainToUse || 
-      (customer.wallet.main + customer.wallet.bonus) < rate;
-
-    if (hasInsufficientBalance) {
+    if (customer.wallet.main < mainToUse || totalAvailable < rate) {
       console.log("💸 Insufficient balance - ending call");
       
-      // Calculate final duration
       const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
       
       session.status = 'ended';
       session.autoEnded = true;
       session.endedAt = new Date();
       session.totalDurationSeconds = totalSeconds;
-      await session.save({ session: mongoSession });
 
-      // ✅ Reset consultant availability
       consultant.consultantProfile.availabilityStatus = 'onWork';
-      await consultant.save({ session: mongoSession });
+
+      await Promise.all([
+        session.save({ session: mongoSession }),
+        consultant.save({ session: mongoSession })
+      ]);
 
       await mongoSession.commitTransaction();
 
-      // ✅ Update CallLog (outside transaction for safety)
-      try {
-        await CallLog.findOneAndUpdate(
-          { sessionId: session._id },
-          {
-            status: 'ended',
-            endReason: 'insufficient_balance',
-            endedAt: session.endedAt
-          }
-        );
-
-        // Create call log message
-        await createAutoEndCallLogMessage(session, 'insufficient_balance');
-      } catch (err) {
-        console.error("CallLog update error:", err);
-      }
+      // Update CallLog (outside transaction)
+      await CallLog.findOneAndUpdate(
+        { sessionId: session._id },
+        { status: 'ended', endReason: 'insufficient_balance', endedAt: session.endedAt }
+      );
+      await createAutoEndCallLogMessage(session, 'insufficient_balance');
 
       console.log("✅ Call auto-ended due to insufficient balance");
       return { billed: false, reason: 'insufficient_balance', ended: true };
@@ -127,6 +113,56 @@ export async function billOneMinute(sessionId) {
     session.systemEarning += systemShare;
     session.lastBilledAt = new Date();
 
+    // ✅ Check remaining balance AFTER deduction
+    const remainingMain = customer.wallet.main;
+    const remainingBonus = customer.wallet.bonus;
+    const remainingTotal = remainingMain + remainingBonus;
+
+    console.log("✅ Billed minute #" + session.billedMinutes, {
+      remainingMain,
+      remainingBonus,
+      remainingTotal
+    });
+
+    /* ============================
+       ✅ PRE-EMPTIVE CHECK: Can afford next minute?
+       If not, end call NOW within same transaction
+    ============================ */
+    if (remainingTotal < rate) {
+      console.log("⚠️ Cannot afford next minute - ending call immediately");
+      
+      const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
+      
+      session.status = 'ended';
+      session.autoEnded = true;
+      session.endedAt = new Date();
+      session.totalDurationSeconds = totalSeconds;
+
+      consultant.consultantProfile.availabilityStatus = 'onWork';
+
+      await Promise.all([
+        customer.save({ session: mongoSession }),
+        consultant.save({ session: mongoSession }),
+        session.save({ session: mongoSession }),
+        systemWallet.save({ session: mongoSession })
+      ]);
+
+      await mongoSession.commitTransaction();
+
+      // Update CallLog
+      await CallLog.findOneAndUpdate(
+        { sessionId: session._id },
+        { status: 'ended', endReason: 'insufficient_balance', endedAt: session.endedAt }
+      );
+      await createAutoEndCallLogMessage(session, 'insufficient_balance');
+
+      console.log("✅ Call ended immediately (no balance for next minute)");
+      return { billed: true, billedMinutes: session.billedMinutes, ended: true };
+    }
+
+    /* ============================
+       SAVE ALL (Normal case - has balance for next minute)
+    ============================ */
     await Promise.all([
       customer.save({ session: mongoSession }),
       consultant.save({ session: mongoSession }),
@@ -135,12 +171,6 @@ export async function billOneMinute(sessionId) {
     ]);
 
     await mongoSession.commitTransaction();
-
-    console.log("✅ Billed minute #" + session.billedMinutes, {
-      remainingMain: customer.wallet.main,
-      remainingBonus: customer.wallet.bonus
-    });
-
     return { billed: true, billedMinutes: session.billedMinutes };
 
   } catch (err) {
@@ -152,7 +182,6 @@ export async function billOneMinute(sessionId) {
   }
 }
 
-// Helper function for auto-end call log
 async function createAutoEndCallLogMessage(session, endReason) {
   try {
     const Conversation = (await import('../models/Conversation.js')).default;
@@ -167,9 +196,9 @@ async function createAutoEndCallLogMessage(session, endReason) {
     const duration = session.totalDurationSeconds || 0;
     const content = generateCallLogContent(session.type, CALL_LOG_STATUS.COMPLETED, duration);
 
-    const message = await Message.create({
+    await Message.create({
       conversationId: conversation._id,
-      sender: session.customer, // System-initiated, attribute to customer
+      sender: session.customer,
       receiver: session.consultant,
       content,
       messageType: 'call_log',
@@ -182,7 +211,7 @@ async function createAutoEndCallLogMessage(session, endReason) {
       }
     });
 
-    conversation.updateLastMessage(content, message.sender, 'call_log');
+    conversation.updateLastMessage(content, session.customer, 'call_log');
     await conversation.save();
 
     console.log('📝 Auto-end call log message created:', content);
@@ -194,8 +223,6 @@ async function createAutoEndCallLogMessage(session, endReason) {
 export async function billRemainingMinutes(sessionId, minutes) {
   for (let i = 0; i < minutes; i++) {
     const result = await billOneMinute(sessionId);
-    if (result.ended || result.reason === 'insufficient_balance') {
-      break; // Stop if call ended
-    }
+    if (result.ended) break;
   }
 }
