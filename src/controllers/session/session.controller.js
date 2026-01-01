@@ -146,6 +146,7 @@ export const getSessionStatus = async (req, res) => {
       data: {
         sessionId: session._id,
         status: session.status,
+        autoEnded: session.autoEnded || false,
         endedAt: session.endedAt,
         endedBy: session.endedBy
       }
