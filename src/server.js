@@ -32,6 +32,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static('uploads'));
 startSessionBillingJob();
 
+app.set('trust proxy', 1);
 // Global rate limiting
 app.use(apiRateLimit);
 
