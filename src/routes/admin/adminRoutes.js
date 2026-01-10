@@ -1,9 +1,9 @@
 import express from 'express';
-import { authMiddleware } from '../../middlewares/auth.middleware.js';
-import { adminOnlyMiddleware } from '../../middlewares/role.middleware.js';
 import { onboardConsultantByAdmin, updateConsultantByAdmin } from '../../controllers/admin/adminConsultantController.js';
 import { getSystemWalletWithLogs } from '../../controllers/admin/adminSystemWalletController.js';
 import { getUsersForAdmin } from '../../controllers/admin/adminUsersController.js';
+import { authMiddleware } from '../../middlewares/auth.middleware.js';
+import { adminOnlyMiddleware } from '../../middlewares/role.middleware.js';
 
 const router = express.Router();
 
@@ -14,7 +14,7 @@ router.use(adminOnlyMiddleware);
 // Profile Management
 router.post('/onboard-consultant', onboardConsultantByAdmin);
 router.get('/system-wallet', getSystemWalletWithLogs);
-router.put('/updateconsultant', updateConsultantByAdmin);
+router.put('/updateconsultant/:consultantId', updateConsultantByAdmin);
 
 router.get('/getusersforadmin', getUsersForAdmin);
 
