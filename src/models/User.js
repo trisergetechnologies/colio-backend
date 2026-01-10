@@ -197,6 +197,39 @@ const userSchema = new mongoose.Schema(
         enum: ['onWork', 'offWork', 'busy'],
         default: 'offWork'
       },
+
+      bankDetails: {
+        accountHolderName: {
+          type: String,
+          trim: true
+        },
+        bankName: {
+          type: String,
+          trim: true
+        },
+        accountNumber: {
+          type: String,
+          trim: true
+        },
+        ifscCode: {
+          type: String,
+          trim: true,
+          uppercase: true,
+          match: [/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code']
+        },
+        upiId: {
+          type: String,
+          trim: true,
+          lowercase: true
+        },
+        isVerified: {
+          type: Boolean,
+          default: false
+        },
+        verifiedAt: {
+          type: Date
+        }
+      },
       
       wallet: {
         available: {

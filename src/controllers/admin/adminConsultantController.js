@@ -153,3 +153,121 @@ export const onboardConsultantByAdmin = async (req, res) => {
         });
     }
 };
+
+export const updateConsultantByAdmin = async (req, res) => {
+  try {
+    // 🔐 Admin guard
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized access'
+      });
+    }
+
+    const { consultantId } = req.params;
+    const updates = req.body;
+
+    // ================= BLOCKED FIELDS =================
+    const blockedFields = [
+      'avatar',
+      'password',
+      'wallet',
+      'role',
+      'googleId',
+      'loginAttempts',
+      'lockUntil'
+    ];
+
+    blockedFields.forEach(field => delete updates[field]);
+
+    // ================= FIND CONSULTANT =================
+    const consultant = await User.findOne({
+      _id: consultantId,
+      role: 'consultant'
+    });
+
+    if (!consultant) {
+      return res.json({
+        success: false,
+        message: 'Consultant not found'
+      });
+    }
+
+    // ================= BASIC FIELDS =================
+    const basicFields = [
+      'name',
+      'email',
+      'phone',
+      'gender',
+      'dateOfBirth',
+      'languages',
+      'isActive',
+      'isVerified'
+    ];
+
+    basicFields.forEach(field => {
+      if (updates[field] !== undefined) {
+        consultant[field] = updates[field];
+      }
+    });
+
+    // ================= CONSULTANT PROFILE =================
+    const consultantFields = [
+      'bio',
+      'skills',
+      'onboardingScore',
+      'ratePerMinute',
+      'ratePerMinuteVideo',
+      'ratePerMinuteChat',
+      'availabilityStatus'
+    ];
+
+    consultantFields.forEach(field => {
+      if (updates[field] !== undefined) {
+        consultant.consultantProfile[field] = updates[field];
+      }
+    });
+
+    // ================= SAVE =================
+    await consultant.save();
+
+    return res.json({
+      success: true,
+      message: 'Consultant updated successfully',
+      data: {
+        consultantId: consultant._id,
+        name: consultant.name,
+        isActive: consultant.isActive,
+        availabilityStatus: consultant.consultantProfile.availabilityStatus,
+        rates: {
+          audio: consultant.consultantProfile.ratePerMinute,
+          video: consultant.consultantProfile.ratePerMinuteVideo,
+          chat: consultant.consultantProfile.ratePerMinuteChat
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Admin update consultant error:', error);
+
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.json({
+        success: false,
+        message: messages.join(', ')
+      });
+    }
+
+    if (error.code === 11000) {
+      return res.json({
+        success: false,
+        message: 'Email or phone already exists'
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update consultant'
+    });
+  }
+};
