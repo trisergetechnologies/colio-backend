@@ -92,7 +92,7 @@ export async function billOneMinute(sessionId) {
     const consultantShare = Math.round(rate * 0.40);
     const systemShare = rate - consultantShare;
 
-    consultant.consultantProfile.wallet.pending += consultantShare;
+    consultant.consultantProfile.wallet.available += consultantShare;
     consultant.consultantProfile.wallet.totalEarned += consultantShare;
 
     const systemWallet = await SystemWallet.findOne().session(mongoSession);
