@@ -162,8 +162,6 @@ export const approveSettlement = async (req, res) => {
     }
 
     const consultant = settlement.consultant;
-
-    // ---------- WALLET VALIDATION ----------
     const wallet = consultant.consultantProfile.wallet;
 
     if (wallet.pending < settlement.amount) {
@@ -173,30 +171,35 @@ export const approveSettlement = async (req, res) => {
       });
     }
 
-    // ---------- UPDATE SETTLEMENT ----------
-    settlement.status = 'settled';
-    settlement.utr = utr.toUpperCase();
-    settlement.approvedBy = adminId;
-    settlement.approvedAt = new Date();
+    // ✅ ATOMIC UPDATE (important)
+    await Settlement.findByIdAndUpdate(
+      settlementId,
+      {
+        $set: {
+          status: 'settled',
+          utr: utr.toUpperCase(),
+          approvedBy: adminId,
+          approvedAt: new Date()
+        }
+      },
+      { runValidators: true }
+    );
 
-    await settlement.save();
-
-    // ---------- UPDATE WALLET ----------
+    // ✅ Wallet update
     wallet.pending -= settlement.amount;
     await consultant.save();
 
     return res.status(200).json({
       success: true,
-      message: 'Settlement approved successfully',
-      settlementId: settlement._id
+      message: 'Settlement approved & settled successfully',
+      settlementId
     });
 
   } catch (error) {
     console.error('Approve settlement error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to approve settlement',
-      error: error.message
+      message: error.message || 'Failed to approve settlement'
     });
   }
 };
