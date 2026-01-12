@@ -140,6 +140,7 @@ function userSelectByRole(role, single = false) {
       consultantProfile.ratePerMinuteVideo
       consultantProfile.ratePerMinuteChat
       consultantProfile.bankDetails.isVerified
+      consultantProfile.wallet
     `;
   }
 
