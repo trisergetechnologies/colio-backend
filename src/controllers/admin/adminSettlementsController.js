@@ -293,7 +293,7 @@ export const getSettlementsForAdmin = async (req, res) => {
     const settlements = await Settlement.find(query)
       .populate({
         path: 'consultant',
-        select: 'name email consultantProfile.wallet'
+        select: 'name avatar email consultantProfile.wallet'
       })
       .populate({
         path: 'approvedBy',
