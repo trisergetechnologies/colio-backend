@@ -2,7 +2,6 @@ import express from 'express';
 
 
 // Import route modules
-import { cashfreeWebhook } from '../controllers/public/cashfreeWebhook.controller.js';
 import adminRoutes from './admin/adminRoutes.js';
 import agoraRoutes from './agora/agoraRoutes.js';
 import communicationRoutes from './agora/communicationRoutes.js';
@@ -61,7 +60,6 @@ router.use('/communication', communicationRoutes); // /api/communication/*
 router.use('/chat', chatRoutes); // /api/chat/*
 router.use('/notifications', notificationRoutes);
 
-router.post('/cashfree/webhook',express.raw({ type: "application/json" }), cashfreeWebhook);
 
 
 export default router;

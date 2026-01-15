@@ -1,14 +1,15 @@
-import express from 'express';
-import { createServer } from 'http';
-import dotenv from 'dotenv';
 import chalk from 'chalk';
 import cors from 'cors';
+import dotenv from 'dotenv';
+import express from 'express';
 import helmet from 'helmet';
+import { createServer } from 'http';
 import connectDB from './config/db.js';
+import { cashfreeWebhook } from './controllers/public/cashfreeWebhook.controller.js';
+import { startSessionBillingJob } from './jobs/sessionBilling.job.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { apiRateLimit } from './middlewares/rateLimit.middleware.js';
 import apiRoutes from './routes/index.js';
-import { startSessionBillingJob } from './jobs/sessionBilling.job.js';
 
 // Load environment variables
 dotenv.config();
@@ -23,6 +24,8 @@ connectDB();
 app.use(helmet());
 
 app.use(cors());
+
+router.post('/cashfree/webhook',express.raw({ type: "application/json" }), cashfreeWebhook);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
