@@ -61,7 +61,7 @@ router.use('/communication', communicationRoutes); // /api/communication/*
 router.use('/chat', chatRoutes); // /api/chat/*
 router.use('/notifications', notificationRoutes);
 
-router.use('/cashfree/webhook', cashfreeWebhook);
+router.post('/cashfree/webhook', cashfreeWebhook);
 
 
 export default router;
