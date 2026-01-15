@@ -5,43 +5,62 @@ import WalletTransaction from "../../models/WalletTransaction.js";
 
 export const cashfreeWebhook = async (req, res) => {
   try {
-    const signature = req.headers["x-webhook-signature"];
-    const rawBody = req.rawBody;
+    const webhookSecret = process.env.CASHFREE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error("CASHFREE_WEBHOOK_SECRET missing");
+      return res.sendStatus(500);
+    }
 
-    const expected = crypto
-      .createHmac("sha256", process.env.CASHFREE_WEBHOOK_SECRET)
+    const signature = req.headers["x-webhook-signature"];
+    if (!signature) {
+      return res.status(400).send("Missing signature");
+    }
+
+    // ✅ req.body IS Buffer because of express.raw()
+    const rawBody = req.body;
+
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret)
       .update(rawBody)
       .digest("base64");
 
-    if (signature !== expected) {
+    if (signature !== expectedSignature) {
       return res.status(401).send("Invalid signature");
     }
 
-    const payload = req.body;
-    const orderId = payload.data.order.order_id;
-    const status = payload.data.payment.payment_status;
+    // Parse AFTER verification
+    const payload = JSON.parse(rawBody.toString("utf8"));
+
+    const orderId = payload?.data?.order?.order_id;
+    const paymentStatus = payload?.data?.payment?.payment_status;
+
+    if (!orderId || !paymentStatus) {
+      return res.sendStatus(400);
+    }
 
     const txn = await WalletTransaction.findOne({ orderId });
     if (!txn || txn.status === "PAID") return res.sendStatus(200);
 
     txn.webhookPayload = payload;
 
-    if (status === "SUCCESS") {
+    if (paymentStatus === "SUCCESS") {
       txn.status = "PAID";
       txn.cfPaymentId = payload.data.payment.cf_payment_id;
       txn.creditedAt = new Date();
 
       const user = await User.findById(txn.user);
-      user.wallet.main += txn.walletCreditAmount;
-      await user.save();
+      if (user) {
+        user.wallet.main += txn.walletCreditAmount;
+        await user.save();
+      }
     } else {
       txn.status = "FAILED";
     }
 
     await txn.save();
-    res.sendStatus(200);
+    return res.sendStatus(200);
   } catch (err) {
-    console.error("Webhook error:", err);
-    res.sendStatus(500);
+    console.error("Cashfree Webhook Error:", err);
+    return res.sendStatus(500);
   }
 };
