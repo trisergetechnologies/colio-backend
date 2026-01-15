@@ -2,16 +2,17 @@ import express from 'express';
 
 
 // Import route modules
-import authRoutes from './auth/auth.routes.js';
-import userRoutes from './user/user.routes.js';
-import customerRoutes from './customer/customer.routes.js';
-import consultantRoutes from './consultant/consultant.routes.js';
-import sessionRoutes from './session/session.routes.js';
-import agoraRoutes from './agora/agoraRoutes.js'
-import communicationRoutes from './agora/communicationRoutes.js'
-import chatRoutes from './chat/chatRoutes.js';
+import { cashfreeWebhook } from '../controllers/public/cashfreeWebhook.controller.js';
 import adminRoutes from './admin/adminRoutes.js';
+import agoraRoutes from './agora/agoraRoutes.js';
+import communicationRoutes from './agora/communicationRoutes.js';
+import authRoutes from './auth/auth.routes.js';
+import chatRoutes from './chat/chatRoutes.js';
+import consultantRoutes from './consultant/consultant.routes.js';
+import customerRoutes from './customer/customer.routes.js';
+import sessionRoutes from './session/session.routes.js';
 import notificationRoutes from './user/notificationRoutes.js';
+import userRoutes from './user/user.routes.js';
 
 const router = express.Router();
 
@@ -59,6 +60,8 @@ router.use('/agora', agoraRoutes);        // /api/agora/*
 router.use('/communication', communicationRoutes); // /api/communication/*
 router.use('/chat', chatRoutes); // /api/chat/*
 router.use('/notifications', notificationRoutes);
+
+router.use('/cashfree/webhook', cashfreeWebhook);
 
 
 export default router;

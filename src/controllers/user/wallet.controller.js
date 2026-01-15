@@ -1,9 +1,11 @@
 // 19. GET  /api/user/wallet               # getWalletBalance()
 // 20. GET  /api/user/transactions         # getTransactionHistory()
 
-import User from '../../models/User.js';
-import Session from '../../models/Session.js';
+import { Cashfree, CFEnvironment } from "cashfree-pg";
 import { PaymentHistory } from '../../models/PaymentHistory.js';
+import Session from '../../models/Session.js';
+import User from '../../models/User.js';
+import WalletTransaction from "../../models/WalletTransaction.js";
 
 /**
  * Get wallet balance
@@ -207,109 +209,64 @@ export const getTransactionHistory = async (req, res) => {
   }
 };
 
+const cashfree = new Cashfree(
+  CFEnvironment.PRODUCTION,
+  process.env.CASHFREE_APP_ID,
+  process.env.CASHFREE_SECRET_KEY
+);
+
 
 export const rechargeWallet = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { amount, paymentMethod } = req.body;
+    const { amount } = req.body;
 
-    // Basic validation
-    if (!amount || isNaN(amount) || Number(amount) <= 0) {
-      return res.status(200).json({
-        success: false,
-        message: 'Invalid amount',
-        data: null,
-      });
+    if (!amount || Number(amount) < 50) {
+      return res.status(400).json({ success: false, message: "Invalid amount" });
     }
 
-    // Find user
     const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(200).json({
-        success: false,
-        message: 'User not found',
-        data: null,
-      });
+    if (!user || user.role !== "customer") {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
     }
 
-    // For demo, we typically allow only customers to recharge
-    if (user.role !== 'customer') {
-      return res.status(200).json({
-        success: false,
-        message: 'Only customers can recharge wallet',
-        data: null,
-      });
-    }
+    const grossAmount = Number(amount);
+    const walletCreditAmount = Math.floor(grossAmount * 0.8);
+    const platformFeeAmount = grossAmount - walletCreditAmount;
 
-    const rechargeAmount = Number(amount);
-
-    // ------------------------------------------------------------------
-    // DEMO PAYMENT FLOW
-    // In a real integration you would:
-    // 1. Create Razorpay order
-    // 2. Confirm payment via webhook or verify signature
-    // 3. Then mark payment history as success and credit wallet
-    //
-    // Here we directly mark payment as "success" and credit wallet.
-    // ------------------------------------------------------------------
-
-    const demoRazorpayOrderId = `demo_order_${Date.now()}`;
-    const demoRazorpayPaymentId = `demo_pay_${Date.now()}`;
-
-    // Create payment history entry
-    const paymentRecord = await PaymentHistory.create({
-      user: user._id,
-      amount: rechargeAmount,
-      razorpayOrderId: demoRazorpayOrderId,
-      razorpayPaymentId: demoRazorpayPaymentId,
-      status: 'success', // directly success for demo
-      paymentMethod: paymentMethod || 'demo',
-    });
-
-    // Credit wallet (main balance)
-    if (!user.wallet) {
-      // Just in case, initialize wallet structure
-      user.wallet = {
-        main: 0,
-        bonus: 0,
-      };
-    }
-
-    user.wallet.main = (user.wallet.main || 0) + rechargeAmount;
-
-    await user.save();
-
-    const responseData = {
-      userId: user._id,
-      role: user.role,
-      wallet: {
-        main: user.wallet.main,
-        bonus: user.wallet.bonus || 0,
-        total: (user.wallet.main || 0) + (user.wallet.bonus || 0),
+    const orderRequest = {
+      order_amount: grossAmount,
+      order_currency: "INR",
+      customer_details: {
+        customer_id: user._id.toString(),
+        customer_email: user.email,
+        customer_phone: user.phone,
       },
-      payment: {
-        id: paymentRecord._id,
-        amount: paymentRecord.amount,
-        status: paymentRecord.status,
-        razorpayOrderId: paymentRecord.razorpayOrderId,
-        razorpayPaymentId: paymentRecord.razorpayPaymentId,
-        paymentMethod: paymentRecord.paymentMethod,
-        createdAt: paymentRecord.createdAt,
+      order_meta: {
+        return_url: `${process.env.FRONTEND_URL}/wallet/return?order_id={order_id}`,
       },
     };
 
-    return res.status(200).json({
+    const cfResponse = await cashfree.PGCreateOrder(orderRequest);
+
+    await WalletTransaction.create({
+      user: user._id,
+      orderId: cfResponse.data.order_id,
+      paymentSessionId: cfResponse.data.payment_session_id,
+      grossAmount,
+      walletCreditAmount,
+      platformFeeAmount,
+    });
+
+    return res.json({
       success: true,
-      message: 'Wallet recharged successfully (demo)',
-      data: responseData,
+      data: {
+        orderId: cfResponse.data.order_id,
+        paymentSessionId: cfResponse.data.payment_session_id,
+      },
     });
-  } catch (error) {
-    console.error('Recharge wallet demo error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to recharge wallet',
-      data: null,
-    });
+  } catch (err) {
+    console.error("Cashfree order error:", err);
+    res.status(500).json({ success: false, message: "Payment initiation failed" });
   }
 };
