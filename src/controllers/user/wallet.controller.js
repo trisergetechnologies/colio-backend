@@ -239,8 +239,8 @@ export const rechargeWallet = async (req, res) => {
       order_currency: "INR",
       customer_details: {
         customer_id: user._id.toString(),
-        customer_email: user.email,
-        customer_phone: user.phone,
+        customer_email: user.email || "customer@colio.in",
+        customer_phone: user.phone || "9999999999"
       },
       order_meta: {
         return_url: `${process.env.FRONTEND_URL}/recharge/return?order_id={order_id}`,
