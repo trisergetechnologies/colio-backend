@@ -46,11 +46,12 @@ export const cashfreeWebhook = async (req, res) => {
       return res.status(500).send("Body is not raw buffer");
     }
 
-    // 5️⃣ Signature verification
-    const expectedSignature = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(req.body)
-      .digest("base64");
+    const hmacHex = crypto
+    .createHmac("sha256", webhookSecret)
+    .update(req.body)
+    .digest("hex");
+
+    const expectedSignature = Buffer.from(hmacHex, "utf8").toString("base64");
 
     console.log("Computed signature:", expectedSignature);
     console.log("Received signature:", signature);
