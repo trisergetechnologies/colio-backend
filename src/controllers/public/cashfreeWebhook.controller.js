@@ -7,23 +7,6 @@ export const cashfreeWebhook = async (req, res) => {
   console.log("──────── CASHFREE WEBHOOK HIT ────────");
 
   try {
-    // 1️⃣ Log headers
-    console.log("Headers:", {
-      "content-type": req.headers["content-type"],
-      "x-webhook-signature": req.headers["x-webhook-signature"],
-    });
-
-    // 2️⃣ Log env
-    console.log(
-      "Webhook secret present:",
-      !!process.env.CASHFREE_WEBHOOK_SECRET
-    );
-
-    // 3️⃣ Log body type
-    console.log("req.body type:", typeof req.body);
-    console.log("req.body instanceof Buffer:", Buffer.isBuffer(req.body));
-    console.log("req.body value:", req.body);
-
     const webhookSecret = process.env.CASHFREE_WEBHOOK_SECRET;
     if (!webhookSecret) {
       console.error("❌ CASHFREE_WEBHOOK_SECRET missing");
@@ -31,28 +14,33 @@ export const cashfreeWebhook = async (req, res) => {
     }
 
     const signature = req.headers["x-webhook-signature"];
+    const timestamp = req.headers["x-webhook-timestamp"];
+    
     if (!signature) {
       console.error("❌ Missing x-webhook-signature header");
       return res.sendStatus(400);
     }
+    
+    if (!timestamp) {
+      console.error("❌ Missing x-webhook-timestamp header");
+      return res.sendStatus(400);
+    }
 
-    // 4️⃣ HARD GUARD — ensure raw body
     if (!Buffer.isBuffer(req.body)) {
-      console.error(
-        "❌ BODY IS NOT BUFFER. Middleware order is wrong.",
-        "Type:",
-        typeof req.body
-      );
+      console.error("❌ BODY IS NOT BUFFER");
       return res.status(500).send("Body is not raw buffer");
     }
 
-    const hmacHex = crypto
-    .createHmac("sha256", webhookSecret)
-    .update(req.body)
-    .digest("hex");
+    // ✅ FIXED: Concatenate timestamp + rawBody, then HMAC
+    const rawBody = req.body.toString("utf8");
+    const signedPayload = timestamp + rawBody;
+    
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(signedPayload)
+      .digest("base64");
 
-    const expectedSignature = Buffer.from(hmacHex, "utf8").toString("base64");
-
+    console.log("Timestamp:", timestamp);
     console.log("Computed signature:", expectedSignature);
     console.log("Received signature:", signature);
 
@@ -63,9 +51,8 @@ export const cashfreeWebhook = async (req, res) => {
 
     console.log("✅ Signature verified");
 
-    // 6️⃣ Parse payload AFTER verification
-    const payload = JSON.parse(req.body.toString("utf8"));
-
+    // Parse payload AFTER verification
+    const payload = JSON.parse(rawBody);
     console.log("Parsed payload:", JSON.stringify(payload, null, 2));
 
     const orderId = payload?.data?.order?.order_id;
@@ -79,7 +66,6 @@ export const cashfreeWebhook = async (req, res) => {
     console.log("Order ID:", orderId);
     console.log("Payment status:", paymentStatus);
 
-    // 7️⃣ Fetch transaction
     const txn = await WalletTransaction.findOne({ orderId });
 
     if (!txn) {
@@ -94,7 +80,6 @@ export const cashfreeWebhook = async (req, res) => {
 
     txn.webhookPayload = payload;
 
-    // 8️⃣ Handle payment result
     if (paymentStatus === "SUCCESS") {
       console.log("💰 Payment SUCCESS — crediting wallet");
 
@@ -117,8 +102,8 @@ export const cashfreeWebhook = async (req, res) => {
 
     await txn.save();
     console.log("✅ Transaction updated");
-
     console.log("──────── WEBHOOK DONE ────────");
+    
     return res.sendStatus(200);
 
   } catch (error) {
