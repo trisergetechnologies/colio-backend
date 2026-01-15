@@ -25,7 +25,7 @@ app.use(helmet());
 
 app.use(cors());
 
-router.post('/cashfree/webhook',express.raw({ type: "application/json" }), cashfreeWebhook);
+app.post('/cashfree/webhook',express.raw({ type: "application/json" }), cashfreeWebhook);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
