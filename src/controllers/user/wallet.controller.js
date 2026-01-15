@@ -243,7 +243,7 @@ export const rechargeWallet = async (req, res) => {
         customer_phone: user.phone,
       },
       order_meta: {
-        return_url: `${process.env.FRONTEND_URL}/wallet/return?order_id={order_id}`,
+        return_url: `${process.env.FRONTEND_URL}/recharge/return?order_id={order_id}`,
       },
     };
 
