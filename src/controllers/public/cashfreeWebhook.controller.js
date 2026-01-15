@@ -49,7 +49,7 @@ export const cashfreeWebhook = async (req, res) => {
     // 5️⃣ Signature verification
     const expectedSignature = crypto
       .createHmac("sha256", webhookSecret)
-      .update(req.body.toString("utf8"))
+      .update(req.body)
       .digest("base64");
 
     console.log("Computed signature:", expectedSignature);
