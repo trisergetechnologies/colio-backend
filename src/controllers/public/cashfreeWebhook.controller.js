@@ -1,24 +1,18 @@
-import { Cashfree } from "cashfree-pg";
 import crypto from "crypto";
 import User from "../../models/User.js";
 import WalletTransaction from "../../models/WalletTransaction.js";
 
-// Initialize Cashfree SDK
-Cashfree.XClientId = process.env.CASHFREE_APP_ID;
-Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY;
-Cashfree.XEnvironment = Cashfree.Environment.SANDBOX; // Change to PRODUCTION for live
 
 export const cashfreeWebhook = async (req, res) => {
   console.log("──────── CASHFREE WEBHOOK HIT ────────");
 
   try {
-    // 1. Get headers
     const signature = req.headers["x-webhook-signature"];
     const timestamp = req.headers["x-webhook-timestamp"];
 
-    console.log("Headers received:", {
-      signature: signature ? "present" : "missing",
-      timestamp: timestamp ? "present" : "missing",
+    console.log("Headers:", { 
+      signature: signature ? "present" : "missing", 
+      timestamp: timestamp ? "present" : "missing" 
     });
 
     if (!signature || !timestamp) {
@@ -26,47 +20,36 @@ export const cashfreeWebhook = async (req, res) => {
       return res.status(400).send("Missing headers");
     }
 
-    // 2. Get raw body as string
     if (!Buffer.isBuffer(req.body)) {
       console.error("❌ Body is not a buffer");
       return res.status(500).send("Invalid body format");
     }
 
     const rawBody = req.body.toString("utf8");
-    console.log("Raw body length:", rawBody.length);
+    
+    // Manual signature verification
+    // IMPORTANT: Use CASHFREE_SECRET_KEY (your API secret key)
+    const secretKey = process.env.CASHFREE_SECRET_KEY;
+    const signedPayload = timestamp + rawBody;
+    
+    const expectedSignature = crypto
+      .createHmac("sha256", secretKey)
+      .update(signedPayload)
+      .digest("base64");
 
-    // 3. Verify signature using Cashfree SDK (RECOMMENDED)
-    try {
-      const webhookEvent = Cashfree.PGVerifyWebhookSignature(
-        signature,
-        rawBody,
-        timestamp
-      );
-      console.log("✅ Signature verified via SDK");
-      console.log("Webhook event type:", webhookEvent?.type);
-    } catch (sdkError) {
-      console.error("❌ SDK Signature verification failed:", sdkError.message);
-      
-      // Fallback: Manual verification
-      const secretKey = process.env.CASHFREE_SECRET_KEY;
-      const signedPayload = timestamp + rawBody;
-      const expectedSignature = crypto
-        .createHmac("sha256", secretKey)
-        .update(signedPayload)
-        .digest("base64");
+    console.log("Secret key prefix:", secretKey?.substring(0, 8));
+    console.log("Timestamp:", timestamp);
+    console.log("Computed signature:", expectedSignature);
+    console.log("Received signature:", signature);
 
-      console.log("Manual verification:");
-      console.log("  Expected:", expectedSignature);
-      console.log("  Received:", signature);
-
-      if (expectedSignature !== signature) {
-        console.error("❌ Manual signature verification also failed");
-        return res.status(401).send("Invalid signature");
-      }
-      console.log("✅ Manual signature verified");
+    if (expectedSignature !== signature) {
+      console.error("❌ Signature mismatch");
+      return res.status(401).send("Invalid signature");
     }
 
-    // 4. Parse payload
+    console.log("✅ Signature verified");
+
+    // Parse payload
     const payload = JSON.parse(rawBody);
     console.log("Webhook type:", payload.type);
 
@@ -81,25 +64,22 @@ export const cashfreeWebhook = async (req, res) => {
       return res.status(400).send("Invalid payload");
     }
 
-    // 5. Find transaction
     const txn = await WalletTransaction.findOne({ orderId });
 
     if (!txn) {
       console.warn("⚠️ No transaction found for order:", orderId);
-      return res.sendStatus(200); // Return 200 to prevent retries
-    }
-
-    if (txn.status === "PAID") {
-      console.log("ℹ️ Transaction already PAID — skipping duplicate");
       return res.sendStatus(200);
     }
 
-    // 6. Save webhook payload
+    if (txn.status === "PAID") {
+      console.log("ℹ️ Already PAID — skipping");
+      return res.sendStatus(200);
+    }
+
     txn.webhookPayload = payload;
 
-    // 7. Process based on status
     if (paymentStatus === "SUCCESS") {
-      console.log("💰 Payment SUCCESS — crediting wallet");
+      console.log("💰 Payment SUCCESS");
 
       txn.status = "PAID";
       txn.cfPaymentId = payload.data.payment.cf_payment_id;
@@ -110,19 +90,14 @@ export const cashfreeWebhook = async (req, res) => {
         user.wallet.main += txn.walletCreditAmount;
         await user.save();
         console.log("✅ Wallet credited:", txn.walletCreditAmount);
-        console.log("✅ New balance:", user.wallet.main);
-      } else {
-        console.error("❌ User not found:", txn.user);
       }
-    } else if (paymentStatus === "FAILED" || paymentStatus === "CANCELLED") {
-      console.log("❌ Payment FAILED/CANCELLED");
-      txn.status = "FAILED";
     } else {
-      console.log("⏳ Payment status:", paymentStatus);
+      console.log("❌ Payment status:", paymentStatus);
+      txn.status = "FAILED";
     }
 
     await txn.save();
-    console.log("✅ Transaction saved with status:", txn.status);
+    console.log("✅ Transaction saved:", txn.status);
     console.log("──────── WEBHOOK DONE ────────");
 
     return res.sendStatus(200);
