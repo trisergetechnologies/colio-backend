@@ -1,164 +1,66 @@
-import mongoose from 'mongoose';
-import User from '../models/User.js';
+// services/sessionBilling.service.js - FIXED VERSION
+import CallLog from '../models/CallLog.js';
 import CommunicationSession from '../models/CommunicationSession.js';
 import SystemWallet from '../models/SystemWallet.js';
-import CallLog from '../models/CallLog.js';
+import User from '../models/User.js';
 import { kickAllFromChannel } from './agoraChannelService.js';
 
 export async function billOneMinute(sessionId) {
-  const mongoSession = await mongoose.startSession();
-  mongoSession.startTransaction();
   console.log("💰 billing service started for session:", sessionId);
 
   try {
-    const session = await CommunicationSession
-      .findById(sessionId)
-      .session(mongoSession);
+    const session = await CommunicationSession.findById(sessionId);
 
     if (!session || session.status !== 'active') {
       console.log("⏭️ Session not active, skipping");
-      await mongoSession.abortTransaction();
       return { billed: false, reason: 'not_active' };
     }
 
-    const customer = await User.findById(session.customer).session(mongoSession);
-    const consultant = await User.findById(session.consultant).session(mongoSession);
+    const customer = await User.findById(session.customer);
+    const consultant = await User.findById(session.consultant);
+
+    if (!customer || !consultant) {
+      console.log("⏭️ Customer or consultant not found");
+      return { billed: false, reason: 'user_not_found' };
+    }
 
     const rate = session.ratePerMinute;
 
     /* ============================
-       BONUS CAP CALCULATION
+       SIMPLE BALANCE CHECK
+       Use main wallet only (bonus field kept for compatibility but not used)
     ============================ */
-    const maxBonusAllowed = Math.floor((session.billedAmount + rate) * 0.10);
-    const remainingBonusAllowed = Math.max(0, maxBonusAllowed - session.bonusUsed);
-    const bonusAvailable = customer.wallet.bonus || 0;
-    const bonusToUse = Math.min(remainingBonusAllowed, bonusAvailable, rate);
-    const mainToUse = rate - bonusToUse;
-
-    const totalAvailable = (customer.wallet.main || 0) + (customer.wallet.bonus || 0);
+    const walletMain = customer.wallet.main || 0;
+    const walletBonus = customer.wallet.bonus || 0;
+    const totalAvailable = walletMain + walletBonus;
 
     console.log("📊 Balance check:", {
-      walletMain: customer.wallet.main,
-      walletBonus: customer.wallet.bonus,
+      walletMain,
+      walletBonus,
       totalAvailable,
-      rate,
-      bonusToUse,
-      mainToUse
+      rate
     });
 
     /* ============================
        INSUFFICIENT BALANCE - END CALL + KICK FROM AGORA
     ============================ */
-    if (customer.wallet.main < mainToUse || totalAvailable < rate) {
+    if (totalAvailable < rate) {
       console.log("💸 Insufficient balance - ending call and kicking from Agora");
       
       const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
       
-      session.status = 'ended';
-      session.autoEnded = true;
-      session.endedAt = new Date();
-      session.totalDurationSeconds = totalSeconds;
+      // Update session
+      await CommunicationSession.findByIdAndUpdate(sessionId, {
+        status: 'ended',
+        autoEnded: true,
+        endedAt: new Date(),
+        totalDurationSeconds: totalSeconds
+      });
 
-      consultant.consultantProfile.availabilityStatus = 'onWork';
-
-      await Promise.all([
-        session.save({ session: mongoSession }),
-        consultant.save({ session: mongoSession })
-      ]);
-
-      await mongoSession.commitTransaction();
-
-      // ✅ KICK USERS FROM AGORA CHANNEL IMMEDIATELY
-      if (session.agora?.channelName) {
-        console.log("🔌 Kicking users from Agora channel:", session.agora.channelName);
-        const kickResult = await kickAllFromChannel(session.agora.channelName);
-        if (kickResult.success) {
-          console.log("✅ Users kicked from Agora channel successfully");
-        } else {
-          console.warn("⚠️ Failed to kick from Agora (users will detect via polling):", kickResult.error);
-        }
-      }
-
-      // Update CallLog (outside transaction)
-      await CallLog.findOneAndUpdate(
-        { sessionId: session._id },
-        { status: 'ended', endReason: 'insufficient_balance', endedAt: session.endedAt }
-      );
-      await createAutoEndCallLogMessage(session, 'insufficient_balance');
-
-      console.log("✅ Call auto-ended due to insufficient balance");
-      return { billed: false, reason: 'insufficient_balance', ended: true };
-    }
-
-    /* ============================
-       WALLET DEDUCTION
-    ============================ */
-    customer.wallet.bonus -= bonusToUse;
-    customer.wallet.main -= mainToUse;
-    session.bonusUsed += bonusToUse;
-
-    /* ============================
-       REVENUE SPLIT
-    ============================ */
-    const consultantShare = Math.round(rate * 0.60);
-    const systemShare = rate - consultantShare;
-
-    consultant.consultantProfile.wallet.available += consultantShare;
-    consultant.consultantProfile.wallet.totalEarned += consultantShare;
-
-    const systemWallet = await SystemWallet.findOne().session(mongoSession);
-    systemWallet.balance += systemShare;
-
-    // await SystemWalletLog.create([{
-    //   sessionId: session._id,
-    //   amount: systemShare,
-    //   source: 'call_billing'
-    // }], { session: mongoSession });
-
-    /* ============================
-       SESSION UPDATE
-    ============================ */
-    session.billedMinutes += 1;
-    session.billedAmount += rate;
-    session.consultantEarning += consultantShare;
-    session.systemEarning += systemShare;
-    session.lastBilledAt = new Date();
-
-    // ✅ Check remaining balance AFTER deduction
-    const remainingMain = customer.wallet.main;
-    const remainingBonus = customer.wallet.bonus;
-    const remainingTotal = remainingMain + remainingBonus;
-
-    console.log("✅ Billed minute #" + session.billedMinutes, {
-      remainingMain,
-      remainingBonus,
-      remainingTotal
-    });
-
-    /* ============================
-       ✅ PRE-EMPTIVE CHECK: Can afford next minute?
-       If not, end call NOW within same transaction + KICK
-    ============================ */
-    if (remainingTotal < rate) {
-      console.log("⚠️ Cannot afford next minute - ending call immediately + kicking");
-      
-      const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
-      
-      session.status = 'ended';
-      session.autoEnded = true;
-      session.endedAt = new Date();
-      session.totalDurationSeconds = totalSeconds;
-
-      consultant.consultantProfile.availabilityStatus = 'onWork';
-
-      await Promise.all([
-        customer.save({ session: mongoSession }),
-        consultant.save({ session: mongoSession }),
-        session.save({ session: mongoSession }),
-        systemWallet.save({ session: mongoSession })
-      ]);
-
-      await mongoSession.commitTransaction();
+      // Reset consultant availability
+      await User.findByIdAndUpdate(session.consultant, {
+        'consultantProfile.availabilityStatus': 'onWork'
+      });
 
       // ✅ KICK USERS FROM AGORA CHANNEL IMMEDIATELY
       if (session.agora?.channelName) {
@@ -174,33 +76,168 @@ export async function billOneMinute(sessionId) {
       // Update CallLog
       await CallLog.findOneAndUpdate(
         { sessionId: session._id },
-        { status: 'ended', endReason: 'insufficient_balance', endedAt: session.endedAt }
+        { status: 'ended', endReason: 'insufficient_balance', endedAt: new Date() }
       );
+      
       await createAutoEndCallLogMessage(session, 'insufficient_balance');
 
-      console.log("✅ Call ended immediately (no balance for next minute)");
-      return { billed: true, billedMinutes: session.billedMinutes, ended: true };
+      console.log("✅ Call auto-ended due to insufficient balance");
+      return { billed: false, reason: 'insufficient_balance', ended: true };
     }
 
     /* ============================
-       SAVE ALL (Normal case - has balance for next minute)
+       WALLET DEDUCTION
+       Deduct from main first, then bonus if needed
     ============================ */
-    await Promise.all([
-      customer.save({ session: mongoSession }),
-      consultant.save({ session: mongoSession }),
-      session.save({ session: mongoSession }),
-      systemWallet.save({ session: mongoSession })
-    ]);
+    let mainToDeduct = Math.min(walletMain, rate);
+    let bonusToDeduct = rate - mainToDeduct;
 
-    await mongoSession.commitTransaction();
-    return { billed: true, billedMinutes: session.billedMinutes };
+    // Atomic update with balance check to prevent race conditions
+    const customerUpdate = await User.findOneAndUpdate(
+      {
+        _id: session.customer,
+        $expr: {
+          $gte: [
+            { $add: ['$wallet.main', '$wallet.bonus'] },
+            rate
+          ]
+        }
+      },
+      {
+        $inc: {
+          'wallet.main': -mainToDeduct,
+          'wallet.bonus': -bonusToDeduct
+        }
+      },
+      { new: true }
+    );
+
+    if (!customerUpdate) {
+      console.log("💸 Balance changed during billing - ending call");
+      
+      const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
+      
+      await CommunicationSession.findByIdAndUpdate(sessionId, {
+        status: 'ended',
+        autoEnded: true,
+        endedAt: new Date(),
+        totalDurationSeconds: totalSeconds
+      });
+
+      await User.findByIdAndUpdate(session.consultant, {
+        'consultantProfile.availabilityStatus': 'onWork'
+      });
+
+      if (session.agora?.channelName) {
+        await kickAllFromChannel(session.agora.channelName);
+      }
+
+      await CallLog.findOneAndUpdate(
+        { sessionId: session._id },
+        { status: 'ended', endReason: 'insufficient_balance', endedAt: new Date() }
+      );
+
+      return { billed: false, reason: 'insufficient_balance', ended: true };
+    }
+
+    /* ============================
+       REVENUE SPLIT (60% consultant, 40% system)
+    ============================ */
+    const consultantShare = Math.round(rate * 0.60);
+    const systemShare = rate - consultantShare;
+
+    // Update consultant wallet
+    await User.findByIdAndUpdate(session.consultant, {
+      $inc: {
+        'consultantProfile.wallet.available': consultantShare,
+        'consultantProfile.wallet.totalEarned': consultantShare
+      }
+    });
+
+    // Update system wallet
+    await SystemWallet.findOneAndUpdate(
+      {},
+      { $inc: { balance: systemShare } },
+      { upsert: true }
+    );
+
+    /* ============================
+       SESSION UPDATE
+       Keep bonusUsed field for compatibility (tracks bonus actually used)
+    ============================ */
+    const updatedSession = await CommunicationSession.findByIdAndUpdate(
+      sessionId,
+      {
+        $inc: {
+          billedMinutes: 1,
+          billedAmount: rate,
+          consultantEarning: consultantShare,
+          systemEarning: systemShare,
+          bonusUsed: bonusToDeduct  // Track bonus used for compatibility
+        },
+        lastBilledAt: new Date()
+      },
+      { new: true }
+    );
+
+    // Check remaining balance AFTER deduction
+    const remainingMain = customerUpdate.wallet.main;
+    const remainingBonus = customerUpdate.wallet.bonus;
+    const remainingTotal = remainingMain + remainingBonus;
+
+    console.log("✅ Billed minute #" + updatedSession.billedMinutes, {
+      deducted: { main: mainToDeduct, bonus: bonusToDeduct },
+      remaining: { main: remainingMain, bonus: remainingBonus, total: remainingTotal }
+    });
+
+    /* ============================
+       PRE-EMPTIVE CHECK: Can afford next minute?
+       If not, end call NOW + KICK
+    ============================ */
+    if (remainingTotal < rate) {
+      console.log("⚠️ Cannot afford next minute - ending call immediately + kicking");
+      
+      const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
+      
+      await CommunicationSession.findByIdAndUpdate(sessionId, {
+        status: 'ended',
+        autoEnded: true,
+        endedAt: new Date(),
+        totalDurationSeconds: totalSeconds
+      });
+
+      await User.findByIdAndUpdate(session.consultant, {
+        'consultantProfile.availabilityStatus': 'onWork'
+      });
+
+      // ✅ KICK USERS FROM AGORA CHANNEL IMMEDIATELY
+      if (session.agora?.channelName) {
+        console.log("🔌 Kicking users from Agora channel:", session.agora.channelName);
+        const kickResult = await kickAllFromChannel(session.agora.channelName);
+        if (kickResult.success) {
+          console.log("✅ Users kicked from Agora channel successfully");
+        } else {
+          console.warn("⚠️ Failed to kick from Agora:", kickResult.error);
+        }
+      }
+
+      // Update CallLog
+      await CallLog.findOneAndUpdate(
+        { sessionId: session._id },
+        { status: 'ended', endReason: 'insufficient_balance', endedAt: new Date() }
+      );
+      
+      await createAutoEndCallLogMessage(session, 'insufficient_balance');
+
+      console.log("✅ Call ended immediately (no balance for next minute)");
+      return { billed: true, billedMinutes: updatedSession.billedMinutes, ended: true };
+    }
+
+    return { billed: true, billedMinutes: updatedSession.billedMinutes };
 
   } catch (err) {
-    await mongoSession.abortTransaction();
     console.error('❌ Billing error:', err);
     return { billed: false, reason: 'error', error: err.message };
-  } finally {
-    mongoSession.endSession();
   }
 }
 

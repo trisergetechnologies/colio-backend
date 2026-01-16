@@ -1,16 +1,12 @@
-// services/agoraChannelService.js
+// services/agoraChannelService.js - FIXED
 import axios from 'axios';
 
 const AGORA_APP_ID = process.env.AGORA_APP_ID;
-const AGORA_CUSTOMER_ID = process.env.AGORA_CUSTOMER_ID;       // Get from Agora Console -> RESTful API
-const AGORA_CUSTOMER_SECRET = process.env.AGORA_CUSTOMER_SECRET; // Get from Agora Console -> RESTful API
+const AGORA_CUSTOMER_ID = process.env.AGORA_CUSTOMER_ID;
+const AGORA_CUSTOMER_SECRET = process.env.AGORA_CUSTOMER_SECRET;
 
 /**
  * Kicks all users from a channel by banning the channel name
- * This immediately disconnects both customer and consultant
- * 
- * @param {string} channelName - The Agora channel name
- * @returns {Promise<{success: boolean, ruleId?: number}>}
  */
 export async function kickAllFromChannel(channelName) {
   try {
@@ -19,17 +15,15 @@ export async function kickAllFromChannel(channelName) {
       return { success: false, error: 'credentials_missing' };
     }
 
-    // Create Base64 encoded credential
     const credential = Buffer.from(`${AGORA_CUSTOMER_ID}:${AGORA_CUSTOMER_SECRET}`).toString('base64');
 
+    // ✅ FIX: Remove uid field entirely when banning by channel name
     const response = await axios.post(
       'https://api.agora.io/dev/v1/kicking-rule',
       {
         appid: AGORA_APP_ID,
-        cname: channelName,  // Ban by channel name - kicks everyone
-        uid: 0,              // 0 means all users
-        ip: '',
-        time: 1,             // Ban for 1 minute (minimum) - channel won't be reused anyway
+        cname: channelName,
+        time: 1,
         privileges: ['join_channel']
       },
       {
@@ -37,7 +31,7 @@ export async function kickAllFromChannel(channelName) {
           'Content-Type': 'application/json',
           'Authorization': `Basic ${credential}`
         },
-        timeout: 10000  // 10 second timeout
+        timeout: 10000
       }
     );
 
@@ -56,27 +50,4 @@ export async function kickAllFromChannel(channelName) {
   }
 }
 
-/**
- * Optional: Delete a kicking rule (if you want to reuse channel names)
- */
-export async function deleteKickRule(ruleId) {
-  try {
-    const credential = Buffer.from(`${AGORA_CUSTOMER_ID}:${AGORA_CUSTOMER_SECRET}`).toString('base64');
-
-    await axios.delete(
-      `https://api.agora.io/dev/v1/kicking-rule?appid=${AGORA_APP_ID}&id=${ruleId}`,
-      {
-        headers: {
-          'Authorization': `Basic ${credential}`
-        }
-      }
-    );
-
-    return { success: true };
-  } catch (error) {
-    console.error('❌ Agora delete rule error:', error.message);
-    return { success: false };
-  }
-}
-
-export default { kickAllFromChannel, deleteKickRule };
+export default { kickAllFromChannel };
