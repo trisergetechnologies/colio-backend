@@ -2,8 +2,8 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import CommunicationSession from '../models/CommunicationSession.js';
 import SystemWallet from '../models/SystemWallet.js';
-import SystemWalletLog from '../models/SystemWalletLog.js';
 import CallLog from '../models/CallLog.js';
+import { kickAllFromChannel } from './agoraChannelService.js';
 
 export async function billOneMinute(sessionId) {
   const mongoSession = await mongoose.startSession();
@@ -47,10 +47,10 @@ export async function billOneMinute(sessionId) {
     });
 
     /* ============================
-       INSUFFICIENT BALANCE - END CALL
+       INSUFFICIENT BALANCE - END CALL + KICK FROM AGORA
     ============================ */
     if (customer.wallet.main < mainToUse || totalAvailable < rate) {
-      console.log("💸 Insufficient balance - ending call");
+      console.log("💸 Insufficient balance - ending call and kicking from Agora");
       
       const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
       
@@ -67,6 +67,17 @@ export async function billOneMinute(sessionId) {
       ]);
 
       await mongoSession.commitTransaction();
+
+      // ✅ KICK USERS FROM AGORA CHANNEL IMMEDIATELY
+      if (session.agora?.channelName) {
+        console.log("🔌 Kicking users from Agora channel:", session.agora.channelName);
+        const kickResult = await kickAllFromChannel(session.agora.channelName);
+        if (kickResult.success) {
+          console.log("✅ Users kicked from Agora channel successfully");
+        } else {
+          console.warn("⚠️ Failed to kick from Agora (users will detect via polling):", kickResult.error);
+        }
+      }
 
       // Update CallLog (outside transaction)
       await CallLog.findOneAndUpdate(
@@ -89,7 +100,7 @@ export async function billOneMinute(sessionId) {
     /* ============================
        REVENUE SPLIT
     ============================ */
-    const consultantShare = Math.round(rate * 0.40);
+    const consultantShare = Math.round(rate * 0.60);
     const systemShare = rate - consultantShare;
 
     consultant.consultantProfile.wallet.available += consultantShare;
@@ -98,11 +109,11 @@ export async function billOneMinute(sessionId) {
     const systemWallet = await SystemWallet.findOne().session(mongoSession);
     systemWallet.balance += systemShare;
 
-    await SystemWalletLog.create([{
-      sessionId: session._id,
-      amount: systemShare,
-      source: 'call_billing'
-    }], { session: mongoSession });
+    // await SystemWalletLog.create([{
+    //   sessionId: session._id,
+    //   amount: systemShare,
+    //   source: 'call_billing'
+    // }], { session: mongoSession });
 
     /* ============================
        SESSION UPDATE
@@ -126,10 +137,10 @@ export async function billOneMinute(sessionId) {
 
     /* ============================
        ✅ PRE-EMPTIVE CHECK: Can afford next minute?
-       If not, end call NOW within same transaction
+       If not, end call NOW within same transaction + KICK
     ============================ */
     if (remainingTotal < rate) {
-      console.log("⚠️ Cannot afford next minute - ending call immediately");
+      console.log("⚠️ Cannot afford next minute - ending call immediately + kicking");
       
       const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
       
@@ -148,6 +159,17 @@ export async function billOneMinute(sessionId) {
       ]);
 
       await mongoSession.commitTransaction();
+
+      // ✅ KICK USERS FROM AGORA CHANNEL IMMEDIATELY
+      if (session.agora?.channelName) {
+        console.log("🔌 Kicking users from Agora channel:", session.agora.channelName);
+        const kickResult = await kickAllFromChannel(session.agora.channelName);
+        if (kickResult.success) {
+          console.log("✅ Users kicked from Agora channel successfully");
+        } else {
+          console.warn("⚠️ Failed to kick from Agora (users will detect via polling):", kickResult.error);
+        }
+      }
 
       // Update CallLog
       await CallLog.findOneAndUpdate(
