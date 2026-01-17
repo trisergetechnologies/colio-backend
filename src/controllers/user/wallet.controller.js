@@ -270,3 +270,66 @@ export const rechargeWallet = async (req, res) => {
     res.status(500).json({ success: false, message: "Payment initiation failed" });
   }
 };
+
+export const getRechargeHistory = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Query params
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const status = req.query.status; // optional: PAID | FAILED | CREATED | CANCELLED
+
+    const query = {
+      user: userId
+    };
+
+    if (status) {
+      query.status = status;
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [transactions, total] = await Promise.all([
+      WalletTransaction.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select({
+          orderId: 1,
+          grossAmount: 1,
+          walletCreditAmount: 1,
+          platformFeeAmount: 1,
+          currency: 1,
+          status: 1,
+          cfPaymentId: 1,
+          creditedAt: 1,
+          createdAt: 1,
+        })
+        .lean(),
+
+      WalletTransaction.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: transactions,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+    });
+
+  } catch (error) {
+    console.error("Get recharge history error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch recharge history",
+      data: null,
+    });
+  }
+};

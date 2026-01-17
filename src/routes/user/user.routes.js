@@ -14,7 +14,8 @@ import {
 import { 
   getWalletBalance, 
   getTransactionHistory, 
-  rechargeWallet
+  rechargeWallet,
+  getRechargeHistory
 } from '../../controllers/user/wallet.controller.js';
 import { getUserCommunicationSessions } from '../../controllers/session/session.controller.js';
 import { updatePushToken } from '../../controllers/user/notification.controller.js';
@@ -47,6 +48,7 @@ router.put('/password',
 router.get('/wallet', getWalletBalance);
 
 router.get('/transactions', getTransactionHistory);
+router.get('/getrechargehistory', getRechargeHistory);
 
 // Session Management (Shared between customer & consultant)
 router.get('/sessions', getUserCommunicationSessions);
