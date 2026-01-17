@@ -6,8 +6,8 @@
 // 30. GET  /api/customer/favorites        # getFavoriteConsultants()
 
 
-import User from '../../models/User.js';
 import Session from '../../models/Session.js';
+import User from '../../models/User.js';
 import settingsService from '../../services/settingsService.js';
 import { isBlockedEitherWay } from '../../utils/block.helper.js';
 
@@ -33,17 +33,14 @@ export const getAvailableConsultants = async (req, res) => {
       "blockedUsers",
     );
 
-    query._id = {
-      $nin: customer.blockedUsers || [],
-    };
-
     // Build query for available consultants
     const query = {
       role: 'consultant',
       isActive: true,
       isVerified: true,
-      // 'consultantProfile.availabilityStatus': { $in: ['onWork'] }
-      'consultantProfile.availabilityStatus': 'onWork'
+    };
+    query._id = {
+      $nin: customer.blockedUsers || [],
     };
 
     // Add filters
