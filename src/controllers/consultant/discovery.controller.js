@@ -102,6 +102,7 @@ export const getAvailableConsultants = async (req, res) => {
         skills: consultant.consultantProfile.skills,
         languages: consultant.languages,
         ratePerMinute: consultant.consultantProfile.ratePerMinute,
+        ratePerMinuteVideo: consultant.consultantProfile.ratePerMinuteVideo,
         ratingAverage: consultant.consultantProfile.ratingAverage,
         ratingCount: consultant.consultantProfile.ratingCount,
         totalSessions: consultant.consultantProfile.totalSessions,
