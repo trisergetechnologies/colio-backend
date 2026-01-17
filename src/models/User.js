@@ -5,249 +5,261 @@ const userSchema = new mongoose.Schema(
     // ============= BASIC INFORMATION =============
     name: {
       type: String,
-      required: [true, 'Name is required'],
+      required: [true, "Name is required"],
       trim: true,
-      minlength: [2, 'Name must be at least 2 characters'],
-      maxlength: [50, 'Name cannot exceed 50 characters']
+      minlength: [2, "Name must be at least 2 characters"],
+      maxlength: [50, "Name cannot exceed 50 characters"],
     },
 
-  //   username: {
-  //   type: String,
-  //   required: true,
-  //   unique: true,
-  //   trim: true,
-  //   lowercase: true,
-  //   minlength: 3,
-  //   maxlength: 30
-  // },
-    favoriteConsultants:{},
+    //   username: {
+    //   type: String,
+    //   required: true,
+    //   unique: true,
+    //   trim: true,
+    //   lowercase: true,
+    //   minlength: 3,
+    //   maxlength: 30
+    // },
+    favoriteConsultants: {},
     email: {
       type: String,
-      required: [true, 'Email is required'],
+      required: [true, "Email is required"],
       unique: true,
       lowercase: true,
       trim: true,
-      match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email']
+      match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"],
     },
-    
+
     phone: {
       type: String,
       required: function () {
-        return !this.googleId;   // ❗ only require phone if NOT Google user
+        return !this.googleId; // ❗ only require phone if NOT Google user
       },
       trim: true,
-      match: [/^[+]?[1-9]\d{1,14}$/, 'Please provide a valid phone number'],
+      match: [/^[+]?[1-9]\d{1,14}$/, "Please provide a valid phone number"],
       validate: {
         validator: function (v) {
           return !v || /^[0-9]{10}$/.test(v); // Validate only if phone exists
         },
-        message: props => `${props.value} is not a valid phone number!`
-      }
+        message: (props) => `${props.value} is not a valid phone number!`,
+      },
     },
-    
+
     password: {
       type: String,
-      required: function() {
+      required: function () {
         return !this.googleId;
       },
-      minlength: [6, 'Password must be at least 6 characters'],
-      select: false
+      minlength: [6, "Password must be at least 6 characters"],
+      select: false,
     },
 
     // ============= ROLE & STATUS =============
     role: {
       type: String,
-      enum: ['customer', 'consultant', 'admin'],
+      enum: ["customer", "consultant", "admin"],
       required: true,
-      default: 'customer'
+      default: "customer",
     },
-    favoriteConsultants: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    }],
+    favoriteConsultants: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
 
     isActive: {
       type: Boolean,
-      default: true
+      default: true,
     },
-    
+
     isVerified: {
       type: Boolean,
-      default: false
+      default: false,
     },
-    
+
     isEmailVerified: {
       type: Boolean,
-      default: false
+      default: false,
     },
-    
+
     isPhoneVerified: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
     // ============= PROFILE INFORMATION =============
     avatar: {
       type: String,
-      default: null
+      default: null,
     },
-    
+
     gender: {
       type: String,
-      enum: ['male', 'female', 'other'],
-      default: null
+      enum: ["male", "female", "other"],
+      default: null,
     },
-    
+
     dateOfBirth: {
       type: Date,
       validate: {
-        validator: function(value) {
+        validator: function (value) {
           return !value || value < new Date();
         },
-        message: 'Date of birth must be in the past'
-      }
+        message: "Date of birth must be in the past",
+      },
     },
-    
-    languages: [{
-      type: String,
-      enum: ['english', 'hindi'],
-      default: ['english']
-    }],
+
+    languages: [
+      {
+        type: String,
+        enum: ["english", "hindi"],
+        default: ["english"],
+      },
+    ],
 
     // ============= GOOGLE OAUTH =============
     googleId: {
       type: String,
       unique: true,
-      sparse: true
+      sparse: true,
     },
 
     // ============= CONSULTANT-SPECIFIC FIELDS =============
     consultantProfile: {
       bio: {
         type: String,
-        maxlength: [500, 'Bio cannot exceed 500 characters'],
+        maxlength: [500, "Bio cannot exceed 500 characters"],
       },
-      
-      skills: [{
-        type: String,
-        enum: [
-          'active-listening', 'empathy', 'stress-management', 
-          'relationship-advice', 'career-guidance', 'general-chat',
-          'anxiety-support', 'motivation', 'life-coaching'
-        ]
-      }],
-      
+
+      skills: [
+        {
+          type: String,
+          enum: [
+            "active-listening",
+            "empathy",
+            "stress-management",
+            "relationship-advice",
+            "career-guidance",
+            "general-chat",
+            "anxiety-support",
+            "motivation",
+            "life-coaching",
+          ],
+        },
+      ],
+
       ratingAverage: {
         type: Number,
         default: 0,
         min: 0,
-        max: 5
+        max: 5,
       },
-      
+
       ratingCount: {
         type: Number,
         default: 0,
-        min: 0
+        min: 0,
       },
-      
+
       totalSessions: {
         type: Number,
         default: 0,
-        min: 0
+        min: 0,
       },
-      
+
       onboardingScore: {
         type: Number,
         min: 0,
         max: 100,
-        required: function() {
-          return this.role === 'consultant';
-        }
+        required: function () {
+          return this.role === "consultant";
+        },
       },
-      
+
       ratePerMinute: {
         type: Number,
         default: 15,
         min: 1,
-        required: function() {
-          return this.role === 'consultant';
-        }
+        required: function () {
+          return this.role === "consultant";
+        },
       },
 
       ratePerMinuteVideo: {
         type: Number,
         default: 25,
         min: 1,
-        required: function() {
-          return this.role === 'consultant';
-        }
+        required: function () {
+          return this.role === "consultant";
+        },
       },
 
       ratePerMinuteChat: {
         type: Number,
         default: 10,
         min: 1,
-        required: function() {
-          return this.role === 'consultant';
-        }
+        required: function () {
+          return this.role === "consultant";
+        },
       },
-      
+
       availabilityStatus: {
         type: String,
-        enum: ['onWork', 'offWork', 'busy'],
-        default: 'offWork'
+        enum: ["onWork", "offWork", "busy"],
+        default: "offWork",
       },
 
       bankDetails: {
         accountHolderName: {
           type: String,
-          trim: true
+          trim: true,
         },
         bankName: {
           type: String,
-          trim: true
+          trim: true,
         },
         accountNumber: {
           type: String,
-          trim: true
+          trim: true,
         },
         ifscCode: {
           type: String,
           trim: true,
           uppercase: true,
-          match: [/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code']
+          match: [/^[A-Z]{4}0[A-Z0-9]{6}$/, "Invalid IFSC code"],
         },
         upiId: {
           type: String,
           trim: true,
-          lowercase: true
+          lowercase: true,
         },
         isVerified: {
           type: Boolean,
-          default: false
+          default: false,
         },
         verifiedAt: {
-          type: Date
-        }
+          type: Date,
+        },
       },
-      
+
       wallet: {
         available: {
           type: Number,
           default: 0,
-          min: 0
+          min: 0,
         },
         pending: {
           type: Number,
           default: 0,
-          min: 0
+          min: 0,
         },
         totalEarned: {
           type: Number,
           default: 0,
-          min: 0
-        }
-      }
+          min: 0,
+        },
+      },
     },
 
     // ============= CUSTOMER WALLET =============
@@ -255,67 +267,69 @@ const userSchema = new mongoose.Schema(
       main: {
         type: Number,
         default: 0,
-        min: 0
+        min: 0,
       },
       bonus: {
         type: Number,
         default: 0,
-        min: 0
-      }
+        min: 0,
+      },
     },
 
     // ============= KYC & COMPLIANCE =============
     kycVerified: {
       type: Boolean,
-      default: false
+      default: false,
     },
-    
-    documents: [{
-      type: {
-        type: String,
-        enum: ['aadhaar', 'pan', 'passport', 'license'],
-        required: true
+
+    documents: [
+      {
+        type: {
+          type: String,
+          enum: ["aadhaar", "pan", "passport", "license"],
+          required: true,
+        },
+        url: {
+          type: String,
+          required: true,
+        },
+        verified: {
+          type: Boolean,
+          default: false,
+        },
+        uploadedAt: {
+          type: Date,
+          default: Date.now,
+        },
       },
-      url: {
-        type: String,
-        required: true
-      },
-      verified: {
-        type: Boolean,
-        default: false
-      },
-      uploadedAt: {
-        type: Date,
-        default: Date.now
-      }
-    }],
+    ],
 
     // ============= REFERRAL SYSTEM =============
     referralCode: {
       type: String,
       unique: true,
-      sparse: true
+      sparse: true,
     },
-    
+
     referredBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: "User",
     },
-    
+
     totalReferrals: {
       type: Number,
-      default: 0
+      default: 0,
     },
 
     fcmToken: {
       type: String,
-      default: null
+      default: null,
     },
 
     deviceInfo: {
       platform: {
         type: String,
-        enum: ['ios', 'android', 'web'],
+        enum: ["ios", "android", "web"],
       },
       version: String,
       lastUpdated: {
@@ -338,23 +352,30 @@ const userSchema = new mongoose.Schema(
       },
     },
 
+    blockedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
     // ============= METADATA =============
     lastLogin: {
-      type: Date
+      type: Date,
     },
-    
+
     loginAttempts: {
       type: Number,
-      default: 0
+      default: 0,
     },
-    
+
     lockUntil: {
-      type: Date
-    }
+      type: Date,
+    },
   },
   {
-    timestamps: true
-  }
+    timestamps: true,
+  },
 );
 
 // ============= INDEXES =============
@@ -366,6 +387,7 @@ userSchema.index({ 'consultantProfile.availabilityStatus': 1 });
 userSchema.index({ 'consultantProfile.skills': 1 });
 userSchema.index({ 'consultantProfile.ratingAverage': -1 });
 userSchema.index({ isActive: 1, isVerified: 1 });
+userSchema.index({ blockedUsers: 1 });
 
 // ============= VIRTUALS =============
 userSchema.virtual('isAccountLocked').get(function() {

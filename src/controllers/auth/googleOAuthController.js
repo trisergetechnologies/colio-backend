@@ -140,7 +140,7 @@ export const googleOAuth = async (req, res) => {
       registrationType: "google",
       role: "customer",
       avatar: picture,
-      wallet: { main: 0, bonus: 0 },
+      wallet: { main: 75, bonus: 0 },
     });
 
     const tokens = await generateTokenPair(user);

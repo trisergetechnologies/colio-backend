@@ -9,6 +9,7 @@
 import User from '../../models/User.js';
 import Session from '../../models/Session.js';
 import settingsService from '../../services/settingsService.js';
+import { isBlockedEitherWay } from '../../utils/block.helper.js';
 
 /**
  * Get available consultants
@@ -27,6 +28,14 @@ export const getAvailableConsultants = async (req, res) => {
       language = 'english',
       sortBy = 'rating' // 'rating', 'sessions', 'rate_low', 'rate_high'
     } = req.query;
+
+    const customer = await User.findById(req.user.userId).select(
+      "blockedUsers",
+    );
+
+    query._id = {
+      $nin: customer.blockedUsers || [],
+    };
 
     // Build query for available consultants
     const query = {
@@ -58,19 +67,19 @@ export const getAvailableConsultants = async (req, res) => {
     // Build sort criteria
     let sortCriteria = {};
     switch (sortBy) {
-      case 'sessions':
-        sortCriteria = { 'consultantProfile.totalSessions': -1 };
+      case "sessions":
+        sortCriteria = {
+          "consultantProfile.totalSessions": -1,
+          randomScore: -1,
+        };
         break;
-      case 'rate_low':
-        sortCriteria = { 'consultantProfile.ratePerMinute': 1 };
-        break;
-      case 'rate_high':
-        sortCriteria = { 'consultantProfile.ratePerMinute': -1 };
-        break;
-      case 'rating':
+
+      case "rating":
       default:
-        sortCriteria = { 'consultantProfile.ratingAverage': -1, 'consultantProfile.ratingCount': -1 };
-        break;
+        sortCriteria = {
+          "consultantProfile.ratingAverage": -1,
+          randomScore: -1,
+        };
     }
 
     // Calculate pagination
@@ -144,12 +153,15 @@ export const quickConnect = async (req, res) => {
       language = 'english'
     } = req.query;
 
+    const customer = await User.findById(req.user.userId).select('blockedUsers');
+
     // Base match conditions (same availability logic)
     const matchStage = {
       role: 'consultant',
       isActive: true,
       isVerified: true,
-      'consultantProfile.availabilityStatus': 'onWork'
+      'consultantProfile.availabilityStatus': 'onWork',
+      _id: { $nin: customer.blockedUsers || [] }
     };
 
     // Optional filters
@@ -263,6 +275,16 @@ export const getConsultantDetails = async (req, res) => {
         success: false,
         message: 'Consultant not found',
         data: null
+      });
+    }
+
+    const customerToCheck = await User.findById(customerId).select("blockedUsers");
+
+    if (isBlockedEitherWay(customerToCheck, consultant)) {
+      return res.status(200).json({
+        success: false,
+        message: "Consultant not available",
+        data: null,
       });
     }
 
@@ -437,6 +459,14 @@ export const searchConsultants = async (req, res) => {
 
     // Calculate pagination
     const skip = (page - 1) * limit;
+
+    const customer = await User.findById(req.user.userId).select(
+      "blockedUsers",
+    );
+
+    query._id = {
+      $nin: customer.blockedUsers || [],
+    };
 
     // Search consultants
     const consultants = await User.find(query)

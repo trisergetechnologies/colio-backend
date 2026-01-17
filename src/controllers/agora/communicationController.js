@@ -10,6 +10,7 @@ import Message from '../../models/Message.js';
 import { cleanupSessionEmojis } from '../chat/inCallController.js';
 import { CALL_LOG_STATUS, generateCallLogContent } from '../../utils/chatConstants.js';
 import { billRemainingMinutes } from '../../services/sessionBilling.service.js';
+import { isBlockedEitherWay } from "../../utils/block.helper.js";
 
 export const startSession = async (req, res) => {
   try {
@@ -29,6 +30,13 @@ export const startSession = async (req, res) => {
 
     if (!consultant) {
       return res.status(404).json({ error: 'Consultant not found' });
+    }
+
+    if (isBlockedEitherWay(customer, consultant)) {
+      return res.status(400).json({
+        error: "Call not allowed",
+        errorCode: "USER_BLOCKED",
+      });
     }
 
     // ✅ IMPROVED: Better availability status handling with specific error codes

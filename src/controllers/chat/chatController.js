@@ -3,6 +3,7 @@ import Conversation from '../../models/Conversation.js';
 import Message from '../../models/Message.js';
 import User from '../../models/User.js';
 import { MESSAGE_TYPES, PAGINATION } from '../../utils/chatConstants.js';
+import { isBlockedEitherWay } from "../../utils/block.helper.js";
 
 // ✅ Helper function to safely get unread count (handles both Map and plain object)
 const getUnreadCountForUser = (conversation, userId) => {
@@ -90,6 +91,16 @@ export const startConversation = async (req, res) => {
 
     if (!participant) {
       return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const currentUser = await User.findById(userId).select("blockedUsers");
+
+    if (isBlockedEitherWay(currentUser, participant)) {
+      return res.status(200).json({
+        success: false,
+        message: "You cannot start a conversation with this user",
+        data: null,
+      });
     }
 
     // Find or create conversation
@@ -205,7 +216,20 @@ export const sendMessage = async (req, res) => {
       p => p.toString() !== userId.toString()
     );
 
-    // Create message
+    // 🔒 BLOCK CHECK (MANDATORY)
+    const [currentUser, receiver] = await Promise.all([
+      User.findById(userId).select('blockedUsers'),
+      User.findById(receiverId).select('blockedUsers')
+    ]);
+
+    if (isBlockedEitherWay(currentUser, receiver)) {
+      return res.status(200).json({
+        success: false,
+        message: 'You cannot send messages to this user',
+        data: null
+      });
+    }
+
     const message = await Message.create({
       conversationId,
       sender: userId,

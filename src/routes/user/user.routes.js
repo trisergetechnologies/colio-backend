@@ -18,6 +18,7 @@ import {
 } from '../../controllers/user/wallet.controller.js';
 import { getUserCommunicationSessions } from '../../controllers/session/session.controller.js';
 import { updatePushToken } from '../../controllers/user/notification.controller.js';
+import { blockUser, getMyBlockedUsers, unblockUser } from '../../controllers/user/block.controller.js';
 
 const router = express.Router();
 
@@ -53,5 +54,11 @@ router.get('/sessions', getUserCommunicationSessions);
 
 router.post('/push-token', updatePushToken);rechargeWallet
 router.post('/rechargewallet', rechargeWallet);
+
+
+//Block Matters
+router.post('/block', blockUser);
+router.post('/unblock', unblockUser);
+router.get('/blocked-users', getMyBlockedUsers);
 
 export default router;
