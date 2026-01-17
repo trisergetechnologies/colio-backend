@@ -18,14 +18,6 @@ const blockReportSchema = new mongoose.Schema(
 
     reason: {
       type: String,
-      enum: [
-        'spam',
-        'harassment',
-        'abusive-language',
-        'fake-profile',
-        'unprofessional-behavior',
-        'other'
-      ],
       required: true
     },
 
