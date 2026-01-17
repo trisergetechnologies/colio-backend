@@ -43,13 +43,35 @@ export const blockUser = async (req, res) => {
       });
     }
 
-    // Save to block-report collection
-    await BlockReport.create({
+    const existingReport = await BlockReport.findOne({
       blockedBy: blockerId,
       blockedUser: userIdToBlock,
-      reason,
-      description
     });
+
+    if (existingReport) {
+      if (existingReport.isActive) {
+        return res.status(200).json({
+          success: false,
+          message: "User is already blocked",
+          data: null,
+        });
+      }
+
+      // Reactivate block
+      existingReport.reason = reason;
+      existingReport.description = description;
+      existingReport.isActive = true;
+      await existingReport.save();
+    } else {
+      await BlockReport.create({
+        blockedBy: blockerId,
+        blockedUser: userIdToBlock,
+        reason,
+        description,
+        isActive: true,
+      });
+    }
+
 
     // Save to user document (fast access)
     blocker.blockedUsers.push(userIdToBlock);
