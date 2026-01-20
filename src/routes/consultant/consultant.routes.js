@@ -5,11 +5,12 @@ import { roleMiddleware } from '../../middlewares/role.middleware.js';
 import { apiRateLimit } from '../../middlewares/rateLimit.middleware.js';
 
 // Consultant controllers
-import { 
-  updateAvailability, 
-  getAvailabilityStatus 
+import {
+  getAvailabilityStatus,
+  updateAvailability
 } from '../../controllers/consultant/availability.controller.js';
 import { getConsultantPerformance } from '../../controllers/consultant/performance.controller.js';
+import { getSettlements } from '../../controllers/consultant/settlement.controller.js';
 // import { acceptSession, declineSession } from '../../controllers/session/session.controller.js';
 
 const router = express.Router();
@@ -27,6 +28,7 @@ router.put('/availability',
 
 router.get('/status', getAvailabilityStatus);
 router.get('/performance', getConsultantPerformance);
+router.get('/getsettlements', getSettlements);
 
 // Session Management
 // router.post('/session/:id/accept', acceptSession);
