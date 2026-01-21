@@ -26,8 +26,8 @@ app.use(helmet());
 
 app.use(cors());
 
-router.post("/ccavenue/response", express.urlencoded({ extended: false }), ccavenueResponse);
-router.post("/ccavenue/cancel", express.urlencoded({ extended: false }), ccavenueCancel);
+app.post("/ccavenue/response", express.urlencoded({ extended: false }), ccavenueResponse);
+app.post("/ccavenue/cancel", express.urlencoded({ extended: false }), ccavenueCancel);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
