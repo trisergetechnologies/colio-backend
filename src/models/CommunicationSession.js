@@ -58,6 +58,7 @@ const communicationSessionSchema = new mongoose.Schema(
 
     endedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     autoEnded: { type: Boolean, default: false },
+    endReason: { type: String, enum: ['completed', 'insufficient_balance', 'user_ended', 'declined', 'missed', 'network_error'], default: null },
 
     deviceInfo: { type: Object, default: {} },
     networkQuality: { type: String, enum: ['good', 'poor', 'unknown'], default: 'unknown' }

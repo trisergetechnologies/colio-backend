@@ -9,7 +9,7 @@ import Conversation from '../../models/Conversation.js';
 import Message from '../../models/Message.js';
 import { cleanupSessionEmojis } from '../chat/inCallController.js';
 import { CALL_LOG_STATUS, generateCallLogContent } from '../../utils/chatConstants.js';
-import { billRemainingMinutes } from '../../services/sessionBilling.service.js';
+import { billRemainingMinutes, startBillingTimer, stopBillingTimer } from '../../services/sessionBilling.service.js';
 import { isBlockedEitherWay } from "../../utils/block.helper.js";
 
 export const startSession = async (req, res) => {
@@ -228,6 +228,7 @@ export const endSession = async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
     }
+    stopBillingTimer(sessionId);
 
     // Guard against double-ending / double-billing
     if (session.status === 'ended' && session.isBilled) {
@@ -364,6 +365,7 @@ export const answerCall = async (req, res) => {
     session.status = 'active';
     session.startedAt = new Date();
     await session.save();
+    startBillingTimer(sessionId);
 
     console.log('✅ Call answered:', sessionId);
     console.log('   Channel:', session.agora.channelName);

@@ -5,11 +5,92 @@ import SystemWallet from '../models/SystemWallet.js';
 import User from '../models/User.js';
 import { kickAllFromChannel } from './agoraChannelService.js';
 
+// ============================================
+// TIMER MANAGEMENT (in-memory)
+// ============================================
+const activeTimers = new Map(); // sessionId -> { timerId, billingInProgress }
+
+export function startBillingTimer(sessionId) {
+  const sessionIdStr = sessionId.toString();
+  
+  if (activeTimers.has(sessionIdStr)) {
+    console.log(`⏰ [Billing] Timer already exists for ${sessionIdStr}`);
+    return;
+  }
+
+  console.log(`⏰ [Billing] Starting timer for ${sessionIdStr}`);
+  
+  const timerData = {
+    timerId: setTimeout(() => executeBilling(sessionIdStr), 60000),
+    billingInProgress: false
+  };
+  
+  activeTimers.set(sessionIdStr, timerData);
+}
+
+export function stopBillingTimer(sessionId) {
+  const sessionIdStr = sessionId.toString();
+  const timerData = activeTimers.get(sessionIdStr);
+  
+  if (timerData) {
+    clearTimeout(timerData.timerId);
+    activeTimers.delete(sessionIdStr);
+    console.log(`⏰ [Billing] Timer stopped for ${sessionIdStr}`);
+  }
+}
+
+async function executeBilling(sessionIdStr) {
+  const timerData = activeTimers.get(sessionIdStr);
+  
+  if (!timerData || timerData.billingInProgress) {
+    console.log(`⏰ [Billing] Skipping ${sessionIdStr} - no timer or already billing`);
+    return;
+  }
+
+  timerData.billingInProgress = true;
+
+  try {
+    const result = await billOneMinute(sessionIdStr);
+
+    if (result.ended) {
+      stopBillingTimer(sessionIdStr);
+    } else if (result.billed) {
+      // Schedule next billing
+      timerData.billingInProgress = false;
+      timerData.timerId = setTimeout(() => executeBilling(sessionIdStr), 60000);
+    } else {
+      // Failed for other reason - stop
+      stopBillingTimer(sessionIdStr);
+    }
+  } catch (error) {
+    console.error(`❌ [Billing] Error for ${sessionIdStr}:`, error);
+    timerData.billingInProgress = false;
+    // Retry in 10s on error
+    timerData.timerId = setTimeout(() => executeBilling(sessionIdStr), 10000);
+  }
+}
+
+
 export async function billOneMinute(sessionId) {
   console.log("💰 billing service started for session:", sessionId);
 
   try {
-    const session = await CommunicationSession.findById(sessionId);
+        // ✅ ATOMIC CHECK - Only process if status is 'active'
+    const session = await CommunicationSession.findOneAndUpdate(
+      {
+        _id: sessionId,
+        status: "active", // Only if still active
+      },
+      {
+        $set: { _billingLock: new Date() }, // Temporary lock field
+      },
+      { new: true },
+    );
+
+    if (!session) {
+      console.log("⏭️ Session not active, skipping");
+      return { billed: false, reason: "not_active" };
+    }
 
     if (!session || session.status !== 'active') {
       console.log("⏭️ Session not active, skipping");
@@ -196,41 +277,7 @@ export async function billOneMinute(sessionId) {
     ============================ */
     if (remainingTotal < rate) {
       console.log("⚠️ Cannot afford next minute - ending call immediately + kicking");
-      
-      const totalSeconds = Math.floor((new Date() - session.startedAt) / 1000);
-      
-      await CommunicationSession.findByIdAndUpdate(sessionId, {
-        status: 'ended',
-        autoEnded: true,
-        endedAt: new Date(),
-        totalDurationSeconds: totalSeconds
-      });
-
-      await User.findByIdAndUpdate(session.consultant, {
-        'consultantProfile.availabilityStatus': 'onWork'
-      });
-
-      // ✅ KICK USERS FROM AGORA CHANNEL IMMEDIATELY
-      if (session.agora?.channelName) {
-        console.log("🔌 Kicking users from Agora channel:", session.agora.channelName);
-        const kickResult = await kickAllFromChannel(session.agora.channelName);
-        if (kickResult.success) {
-          console.log("✅ Users kicked from Agora channel successfully");
-        } else {
-          console.warn("⚠️ Failed to kick from Agora:", kickResult.error);
-        }
-      }
-
-      // Update CallLog
-      await CallLog.findOneAndUpdate(
-        { sessionId: session._id },
-        { status: 'ended', endReason: 'insufficient_balance', endedAt: new Date() }
-      );
-      
-      await createAutoEndCallLogMessage(session, 'insufficient_balance');
-
-      console.log("✅ Call ended immediately (no balance for next minute)");
-      return { billed: true, billedMinutes: updatedSession.billedMinutes, ended: true };
+      endSessionDueToBalance(session);
     }
 
     return { billed: true, billedMinutes: updatedSession.billedMinutes };
@@ -284,4 +331,63 @@ export async function billRemainingMinutes(sessionId, minutes) {
     const result = await billOneMinute(sessionId);
     if (result.ended) break;
   }
+}
+
+async function endSessionDueToBalance(session) {
+  const sessionId = session._id;
+  
+  // ✅ Atomic update - prevents duplicate endings
+  const updateResult = await CommunicationSession.findOneAndUpdate(
+    {
+      _id: sessionId,
+      status: 'active'  // Only if still active
+    },
+    {
+      $set: {
+        status: 'ended',
+        autoEnded: true,
+        endReason: 'insufficient_balance',  // ← NEW FIELD
+        endedAt: new Date(),
+        totalDurationSeconds: Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000)
+      },
+      $unset: { _billingLock: 1 }
+    },
+    { new: true }
+  );
+
+  if (!updateResult) {
+    console.log("⏭️ Session already ended by another process");
+    return;
+  }
+
+  console.log("📞 Session auto-ended:", sessionId.toString());
+
+  // Reset consultant (only if currently busy)
+  await User.findOneAndUpdate(
+    {
+      _id: session.consultant,
+      'consultantProfile.availabilityStatus': 'busy'
+    },
+    { $set: { 'consultantProfile.availabilityStatus': 'onWork' } }
+  );
+  console.log("📞 Consultant set back to onWork");
+
+  // Kick from Agora
+  if (session.agora?.channelName) {
+    console.log("🔌 Kicking users from Agora channel:", session.agora.channelName);
+    const kickResult = await kickAllFromChannel(session.agora.channelName);
+    console.log(kickResult.success ? "✅ Kicked successfully" : "⚠️ Kick failed:", kickResult.error);
+  }
+
+  // Update CallLog
+  await CallLog.findOneAndUpdate(
+    { sessionId },
+    { $set: { status: 'ended', endReason: 'insufficient_balance', endedAt: new Date() } }
+  );
+
+  // Create call log message (with duplicate check)
+  await createAutoEndCallLogMessage(updateResult, 'insufficient_balance');
+
+  // Stop timer
+  stopBillingTimer(sessionId);
 }

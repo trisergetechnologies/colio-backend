@@ -147,6 +147,7 @@ export const getSessionStatus = async (req, res) => {
         sessionId: session._id,
         status: session.status,
         autoEnded: session.autoEnded || false,
+        endReason: session.endReason || null,
         endedAt: session.endedAt,
         endedBy: session.endedBy,
         billedMinutes: session.billedMinutes || 0,
