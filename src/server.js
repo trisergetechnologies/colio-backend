@@ -10,6 +10,7 @@ import { startSessionBillingJob } from './jobs/sessionBilling.job.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { apiRateLimit } from './middlewares/rateLimit.middleware.js';
 import apiRoutes from './routes/index.js';
+import { ccavenueCancel, ccavenueResponse } from './controllers/user/wallet.controller.js';
 
 // Load environment variables
 dotenv.config();
@@ -25,7 +26,8 @@ app.use(helmet());
 
 app.use(cors());
 
-app.post('/cashfree/webhook',express.raw({ type: "application/json" }), cashfreeWebhook);
+router.post("/ccavenue/response", express.urlencoded({ extended: false }), ccavenueResponse);
+router.post("/ccavenue/cancel", express.urlencoded({ extended: false }), ccavenueCancel);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

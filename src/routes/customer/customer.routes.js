@@ -14,6 +14,7 @@ import {
   getFavoriteConsultants, 
   quickConnect
 } from '../../controllers/consultant/discovery.controller.js';
+import { getTransactionHistory, getTransactionStatus, rechargeWallet } from '../../controllers/user/wallet.controller.js';
 
 const router = express.Router();
 
@@ -42,5 +43,10 @@ router.post('/favorites',
 router.delete('/favorites/:id', removeFromFavorites);
 
 router.get('/favorites', getFavoriteConsultants);
+
+//Recharge Handling
+router.post("/recharge", rechargeWallet);
+router.get("/transactions", getTransactionHistory);
+router.get("/transaction/:orderId", getTransactionStatus);
 
 export default router;
