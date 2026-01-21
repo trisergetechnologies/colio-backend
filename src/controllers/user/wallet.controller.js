@@ -8,6 +8,15 @@ import CCavenueUtil from "../../utils/ccavenueUtil.js";
 
 const ccav = new CCavenueUtil(process.env.CCAVENUE_WORKING_KEY);
 
+// CCAvenue URLs
+const CCAVENUE_TEST_URL = "https://test.ccavenue.com/transaction/transaction.do?command=initiateTransaction";
+const CCAVENUE_PROD_URL = "https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction";
+
+// Get CCAvenue URL based on environment
+const getCCAvenueUrl = () => {
+  return CCAVENUE_TEST_URL;
+};
+
 export const getWalletBalance = async (req, res) => {
   try {
     const userId = req.user.userId;

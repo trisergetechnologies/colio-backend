@@ -4,22 +4,20 @@ import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import { apiRateLimit } from '../../middlewares/rateLimit.middleware.js';
 
 // User controllers
-import { 
-  getProfile, 
-  updateProfile, 
-  uploadAvatar, 
-  deleteAvatar, 
-  updatePassword 
-} from '../../controllers/user/profile.controller.js';
-import { 
-  getWalletBalance, 
-  getTransactionHistory, 
-  rechargeWallet,
-  getRechargeHistory
-} from '../../controllers/user/wallet.controller.js';
 import { getUserCommunicationSessions } from '../../controllers/session/session.controller.js';
-import { updatePushToken } from '../../controllers/user/notification.controller.js';
 import { blockUser, getMyBlockedUsers, unblockUser } from '../../controllers/user/block.controller.js';
+import { updatePushToken } from '../../controllers/user/notification.controller.js';
+import {
+  deleteAvatar,
+  getProfile,
+  updatePassword,
+  updateProfile,
+  uploadAvatar
+} from '../../controllers/user/profile.controller.js';
+import {
+  getWalletBalance,
+  rechargeWallet
+} from '../../controllers/user/wallet.controller.js';
 
 const router = express.Router();
 
@@ -47,15 +45,15 @@ router.put('/password',
 // Wallet Information
 router.get('/wallet', getWalletBalance);
 
-router.get('/transactions', getTransactionHistory);
-router.get('/getrechargehistory', getRechargeHistory);
+// router.get('/transactions', getTransactionHistory);
+// router.get('/getrechargehistory', getRechargeHistory);
 
 // Session Management (Shared between customer & consultant)
 router.get('/sessions', getUserCommunicationSessions);
 
 
 router.post('/push-token', updatePushToken);rechargeWallet
-router.post('/rechargewallet', rechargeWallet);
+// router.post('/rechargewallet', rechargeWallet);
 
 
 //Block Matters
