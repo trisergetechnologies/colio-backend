@@ -25,7 +25,7 @@ app.use(helmet());
 
 app.use(cors());
 
-app.post("/razorpay/webhook", razorpayWebhook);
+
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -41,7 +41,7 @@ app.use(apiRateLimit);
 
 // API routes
 app.use('/api', apiRoutes);
-
+app.post("/razorpay/webhook", razorpayWebhook);
 // Root endpoint
 app.get('/', (req, res) => {
   res.status(200).json({
