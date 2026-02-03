@@ -1,21 +1,10 @@
 // 19. GET  /api/user/wallet               # getWalletBalance()
 // 20. GET  /api/user/transactions         # getTransactionHistory()
 
+import Razorpay from "razorpay";
 import Session from '../../models/Session.js';
 import User from '../../models/User.js';
 import WalletTransaction from "../../models/WalletTransaction.js";
-import CCavenueUtil from "../../utils/ccavenueUtil.js";
-
-const ccav = new CCavenueUtil(process.env.CCAVENUE_WORKING_KEY);
-
-// CCAvenue URLs
-const CCAVENUE_TEST_URL = "https://test.ccavenue.com/transaction/transaction.do?command=initiateTransaction";
-const CCAVENUE_PROD_URL = "https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction";
-
-// Get CCAvenue URL based on environment
-const getCCAvenueUrl = () => {
-  return CCAVENUE_TEST_URL;
-};
 
 export const getWalletBalance = async (req, res) => {
   try {
@@ -253,107 +242,58 @@ const generateOrderId = () => {
   return `COLIO_${timestamp}_${random}`;
 };
 
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_ID,
+});
+
 export const rechargeWallet = async (req, res) => {
-  console.log("──────── RECHARGE WALLET REQUEST ────────");
+  const { amount } = req.body;
+  const userId = req.user.userId;
 
-  try {
-    const userId = req.user.userId;
-    const { amount } = req.body;
-
-    // Validate amount
-    if (!amount || Number(amount) < 50) {
-      return res.status(400).json({
-        success: false,
-        message: "Minimum recharge amount is ₹50",
-      });
-    }
-
-    // Get user
-    const user = await User.findById(userId);
-    if (!user || user.role !== "customer") {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    // Calculate amounts
-    const grossAmount = Number(amount);
-    const walletCreditAmount = Math.floor(grossAmount * 0.8); // 80% to wallet
-    const platformFeeAmount = grossAmount - walletCreditAmount; // 20% platform fee
-
-    // Generate unique order ID
-    const orderId = generateOrderId();
-
-    // Create transaction record
-    const transaction = await WalletTransaction.create({
-      user: user._id,
-      orderId,
-      grossAmount,
-      walletCreditAmount,
-      platformFeeAmount,
-      currency: "INR",
-      status: "CREATED",
-      billingInfo: {
-        name: user.name || "COLIO_CUSTOMER",
-        email: user.email || "customer@colio.in",
-        phone: user.phone || "9990000099",
-      },
-    });
-
-    console.log("Transaction created:", orderId);
-
-    // Prepare CCAvenue order parameters
-    const orderParams = {
-      merchant_id: process.env.CCAVENUE_MERCHANT_ID,
-      order_id: orderId,
-      currency: "INR",
-      amount: grossAmount.toFixed(2),
-      redirect_url: `${process.env.BACKEND_URL}/ccavenue/response`,
-      cancel_url: `${process.env.BACKEND_URL}/ccavenue/cancel`,
-      language: "EN",
-
-      // Billing info
-      billing_name: user.name || "",
-      billing_email: user.email || "",
-      billing_tel: user.phone || "",
-      billing_address: "",
-      billing_city: "",
-      billing_state: "",
-      billing_zip: "",
-      billing_country: "India",
-
-      // Merchant params (can store custom data)
-      merchant_param1: user._id.toString(),
-      merchant_param2: walletCreditAmount.toString(),
-      merchant_param3: "wallet_recharge",
-    };
-
-    // Encrypt order data
-    const encryptedData = ccav.getEncryptedOrder(orderParams);
-
-    console.log("Encrypted data generated for order:", orderId);
-    console.log("──────── RECHARGE WALLET DONE ────────");
-
-    // Return data needed by frontend
-    return res.json({
-      success: true,
-      data: {
-        orderId,
-        encRequest: encryptedData,
-        accessCode: process.env.CCAVENUE_ACCESS_CODE,
-        ccavenueUrl: getCCAvenueUrl(),
-        amount: grossAmount,
-        walletCreditAmount,
-      },
-    });
-  } catch (error) {
-    console.error("🔥 Recharge wallet error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Payment initiation failed",
-    });
+  if (!amount || amount < 50) {
+    return res.status(400).json({ success: false, message: "Minimum ₹50" });
   }
+
+  const user = await User.findById(userId);
+  if (!user || user.role !== "customer") {
+    return res.status(403).json({ success: false });
+  }
+
+  const grossAmount = Number(amount);
+  const walletCreditAmount = Math.floor(grossAmount * 0.8);
+  const platformFeeAmount = grossAmount - walletCreditAmount;
+
+  const order = await razorpay.orders.create({
+    amount: grossAmount * 100, // paise
+    currency: "INR",
+    receipt: `COLIO_${Date.now()}`,
+  });
+
+  const txn = await WalletTransaction.create({
+    user: user._id,
+    orderId: order.receipt,
+    razorpayOrderId: order.id,
+    grossAmount,
+    walletCreditAmount,
+    platformFeeAmount,
+    billingInfo: {
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+    },
+  });
+
+  return res.json({
+    success: true,
+    data: {
+      razorpayOrderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      key: process.env.RAZORPAY_KEY_ID,
+      orderId: txn.orderId,
+    },
+  });
 };
 
 /**

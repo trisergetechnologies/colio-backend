@@ -5,12 +5,11 @@ import express from 'express';
 import helmet from 'helmet';
 import { createServer } from 'http';
 import connectDB from './config/db.js';
-import { cashfreeWebhook } from './controllers/public/cashfreeWebhook.controller.js';
+import { razorpayWebhook } from './controllers/public/razorpayWebhook.controller.js';
 import { startSessionBillingJob } from './jobs/sessionBilling.job.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { apiRateLimit } from './middlewares/rateLimit.middleware.js';
 import apiRoutes from './routes/index.js';
-import { ccavenueCancel, ccavenueResponse } from './controllers/user/wallet.controller.js';
 
 // Load environment variables
 dotenv.config();
@@ -26,8 +25,9 @@ app.use(helmet());
 
 app.use(cors());
 
-app.post("/ccavenue/response", express.urlencoded({ extended: false }), ccavenueResponse);
-app.post("/ccavenue/cancel", express.urlencoded({ extended: false }), ccavenueCancel);
+// app.post("/ccavenue/response", express.urlencoded({ extended: false }), ccavenueResponse);
+// app.post("/ccavenue/cancel", express.urlencoded({ extended: false }), ccavenueCancel);
+app.post("/razorpay/webhook", razorpayWebhook);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
