@@ -4,66 +4,93 @@ import WalletTransaction from "../../models/WalletTransaction.js";
 
 export const razorpayWebhook = async (req, res) => {
   try {
-    console.log("WEBHOOK HIT");
+    console.log("💬 Razorpay webhook received");
+
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     const signature = req.headers["x-razorpay-signature"];
+    console.log("💬 Secret and signature received:", secret, signature);
 
-    const body = JSON.stringify(req.body);
+    // ✅ RAW BODY (Buffer)
+    const rawBody = req.body;
+    console.log("💬 Raw body received:", rawBody);
 
     const expectedSignature = crypto
       .createHmac("sha256", secret)
-      .update(body)
+      .update(rawBody)
       .digest("hex");
+    console.log("💬 Expected signature:", expectedSignature);
 
     if (expectedSignature !== signature) {
+      console.error("❌ Razorpay webhook signature mismatch");
       return res.status(401).send("Invalid signature");
     }
 
-    const event = req.body.event;
-    const payment = req.body.payload?.payment?.entity;
+    const payload = JSON.parse(rawBody.toString("utf8"));
+    console.log("💬 Payload parsed:", payload);
 
-    if (!payment) return res.sendStatus(200);
+    const event = payload.event;
+    const payment = payload.payload?.payment?.entity;
+    console.log("💬 Event:", event, "Payment entity:", payment);
+
+    if (!payment) {
+      console.log("💬 No payment found, returning early.");
+      return res.sendStatus(200);
+    }
 
     const txn = await WalletTransaction.findOne({
       razorpayOrderId: payment.order_id,
     });
+    console.log("💬 Transaction found:", txn);
 
-    if (!txn) return res.sendStatus(200);
+    if (!txn) {
+      console.log("💬 Transaction not found for order ID:", payment.order_id);
+      return res.sendStatus(200);
+    }
 
-    // 🔹 AUTHORIZED (pending)
+    // 🔹 AUTHORIZED
     if (event === "payment.authorized") {
+      console.log("💬 Payment authorized event received");
       txn.status = "AUTHORIZED";
       txn.razorpayPaymentId = payment.id;
       await txn.save();
+      console.log("💬 Transaction status set to AUTHORIZED");
     }
 
-    // ✅ SUCCESS
+    // ✅ CAPTURED = SUCCESS
     if (event === "payment.captured") {
+      console.log("💬 Payment captured event received");
       if (txn.status !== "CAPTURED") {
         txn.status = "CAPTURED";
         txn.razorpayPaymentId = payment.id;
         txn.creditedAt = new Date();
 
         const user = await User.findById(txn.user);
+        console.log("💬 User found:", user);
+
         if (user) {
           user.wallet.main += txn.walletCreditAmount;
           await user.save();
+          console.log("💬 User wallet updated with credited amount:", txn.walletCreditAmount);
         }
 
         await txn.save();
+        console.log("💬 Transaction status set to CAPTURED");
+      } else {
+        console.log("💬 Transaction already captured");
       }
     }
 
     // ❌ FAILED
     if (event === "payment.failed") {
+      console.log("💬 Payment failed event received");
       txn.status = "FAILED";
-      console.log("WEBHOOK FAILED");
       await txn.save();
+      console.log("💬 Transaction status set to FAILED");
     }
-    console.log("WEBHOOK RETURNIG");
+
     return res.sendStatus(200);
   } catch (err) {
-    console.error("Webhook error:", err);
+    console.error("🔥 Razorpay Webhook error:", err);
     return res.sendStatus(500);
   }
 };
