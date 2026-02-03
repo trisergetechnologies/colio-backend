@@ -4,6 +4,7 @@ import WalletTransaction from "../../models/WalletTransaction.js";
 
 export const razorpayWebhook = async (req, res) => {
   try {
+    console.log("WEBHOOK HIT");
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     const signature = req.headers["x-razorpay-signature"];
 
@@ -56,9 +57,10 @@ export const razorpayWebhook = async (req, res) => {
     // ❌ FAILED
     if (event === "payment.failed") {
       txn.status = "FAILED";
+      console.log("WEBHOOK FAILED");
       await txn.save();
     }
-
+    console.log("WEBHOOK RETURNIG");
     return res.sendStatus(200);
   } catch (err) {
     console.error("Webhook error:", err);
