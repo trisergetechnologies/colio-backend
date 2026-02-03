@@ -3,42 +3,65 @@ import User from "../../models/User.js";
 import WalletTransaction from "../../models/WalletTransaction.js";
 
 export const razorpayWebhook = async (req, res) => {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  const signature = req.headers["x-razorpay-signature"];
+  try {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const signature = req.headers["x-razorpay-signature"];
 
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(JSON.stringify(req.body))
-    .digest("hex");
+    const body = JSON.stringify(req.body);
 
-  if (expected !== signature) {
-    return res.status(401).send("Invalid signature");
-  }
+    const expectedSignature = crypto
+      .createHmac("sha256", secret)
+      .update(body)
+      .digest("hex");
 
-  const event = req.body.event;
+    if (expectedSignature !== signature) {
+      return res.status(401).send("Invalid signature");
+    }
 
-  if (event === "payment.captured") {
-    const payment = req.body.payload.payment.entity;
+    const event = req.body.event;
+    const payment = req.body.payload?.payment?.entity;
+
+    if (!payment) return res.sendStatus(200);
 
     const txn = await WalletTransaction.findOne({
       razorpayOrderId: payment.order_id,
     });
 
-    if (!txn || txn.status === "PAID") return res.sendStatus(200);
+    if (!txn) return res.sendStatus(200);
 
-    txn.status = "PAID";
-    txn.razorpayPaymentId = payment.id;
-    txn.webhookPayload = req.body;
-    txn.creditedAt = new Date();
-
-    const user = await User.findById(txn.user);
-    if (user) {
-      user.wallet.main += txn.walletCreditAmount;
-      await user.save();
+    // 🔹 AUTHORIZED (pending)
+    if (event === "payment.authorized") {
+      txn.status = "AUTHORIZED";
+      txn.razorpayPaymentId = payment.id;
+      await txn.save();
     }
 
-    await txn.save();
-  }
+    // ✅ SUCCESS
+    if (event === "payment.captured") {
+      if (txn.status !== "CAPTURED") {
+        txn.status = "CAPTURED";
+        txn.razorpayPaymentId = payment.id;
+        txn.creditedAt = new Date();
 
-  res.sendStatus(200);
+        const user = await User.findById(txn.user);
+        if (user) {
+          user.wallet.main += txn.walletCreditAmount;
+          await user.save();
+        }
+
+        await txn.save();
+      }
+    }
+
+    // ❌ FAILED
+    if (event === "payment.failed") {
+      txn.status = "FAILED";
+      await txn.save();
+    }
+
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("Webhook error:", err);
+    return res.sendStatus(500);
+  }
 };

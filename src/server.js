@@ -25,8 +25,6 @@ app.use(helmet());
 
 app.use(cors());
 
-// app.post("/ccavenue/response", express.urlencoded({ extended: false }), ccavenueResponse);
-// app.post("/ccavenue/cancel", express.urlencoded({ extended: false }), ccavenueCancel);
 app.post("/razorpay/webhook", razorpayWebhook);
 
 // Body parsing middleware

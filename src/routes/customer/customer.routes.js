@@ -2,19 +2,19 @@ import express from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import { roleMiddleware } from '../../middlewares/role.middleware.js';
 // import { validateRequest, validationSchemas } from '../../middlewares/validation.middleware.js';
-import { apiRateLimit, sessionStartRateLimit } from '../../middlewares/rateLimit.middleware.js';
+import { apiRateLimit } from '../../middlewares/rateLimit.middleware.js';
 
 // Customer controllers
-import { 
-  getAvailableConsultants, 
-  getConsultantDetails, 
-  searchConsultants, 
-  addToFavorites, 
-  removeFromFavorites, 
-  getFavoriteConsultants, 
-  quickConnect
+import {
+  addToFavorites,
+  getAvailableConsultants,
+  getConsultantDetails,
+  getFavoriteConsultants,
+  quickConnect,
+  removeFromFavorites,
+  searchConsultants
 } from '../../controllers/consultant/discovery.controller.js';
-import { getTransactionHistory, getTransactionStatus, rechargeWallet } from '../../controllers/user/wallet.controller.js';
+import { getRazorTransactionStatus, getTransactionHistory, getTransactionStatus, rechargeWallet } from '../../controllers/user/wallet.controller.js';
 
 const router = express.Router();
 
@@ -48,5 +48,6 @@ router.get('/favorites', getFavoriteConsultants);
 router.post("/recharge", rechargeWallet);
 router.get("/transactions", getTransactionHistory);
 router.get("/transaction/:orderId", getTransactionStatus);
+router.get("/transaction-status/:orderId", getRazorTransactionStatus);
 
 export default router;

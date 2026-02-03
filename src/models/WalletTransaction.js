@@ -27,6 +27,7 @@ const walletTransactionSchema = new mongoose.Schema(
       type: String,
       index: true,
     },
+    razorpayStatus: String,
 
     razorpaySignature: {
       type: String,
@@ -53,12 +54,12 @@ const walletTransactionSchema = new mongoose.Schema(
       default: "INR",
     },
 
-    status: {
-      type: String,
-      enum: ["CREATED", "PAID", "FAILED"],
-      default: "CREATED",
-      index: true,
-    },
+status: {
+  type: String,
+  enum: ["CREATED", "AUTHORIZED", "CAPTURED", "FAILED"],
+  default: "CREATED",
+  index: true,
+},
 
     paymentGateway: {
       type: String,

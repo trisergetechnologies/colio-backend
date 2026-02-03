@@ -237,180 +237,79 @@ export const getRechargeHistory = async (req, res) => {
  * Generate unique order ID
  */
 const generateOrderId = () => {
-  const timestamp = Date.now();
-  const random = Math.floor(Math.random() * 10000);
-  return `COLIO_${timestamp}_${random}`;
+  return `COLIO_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 };
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET, // ✅ FIXED
 });
 
 export const rechargeWallet = async (req, res) => {
-  const { amount } = req.body;
-  const userId = req.user.userId;
+  try {
+    const { amount } = req.body;
+    const userId = req.user.userId;
 
-  if (!amount || amount < 50) {
-    return res.status(400).json({ success: false, message: "Minimum ₹50" });
-  }
+    if (!amount || amount < 50) {
+      return res.status(400).json({
+        success: false,
+        message: "Minimum recharge amount is ₹50",
+      });
+    }
 
-  const user = await User.findById(userId);
-  if (!user || user.role !== "customer") {
-    return res.status(403).json({ success: false });
-  }
+    const user = await User.findById(userId);
+    if (!user || user.role !== "customer") {
+      return res.status(403).json({ success: false });
+    }
 
-  const grossAmount = Number(amount);
-  const walletCreditAmount = Math.floor(grossAmount * 0.8);
-  const platformFeeAmount = grossAmount - walletCreditAmount;
+    const grossAmount = Number(amount);
+    const walletCreditAmount = Math.floor(grossAmount * 0.8);
+    const platformFeeAmount = grossAmount - walletCreditAmount;
 
-  const order = await razorpay.orders.create({
-    amount: grossAmount * 100, // paise
-    currency: "INR",
-    receipt: `COLIO_${Date.now()}`,
-  });
+    const orderId = generateOrderId();
 
-  const txn = await WalletTransaction.create({
-    user: user._id,
-    orderId: order.receipt,
-    razorpayOrderId: order.id,
-    grossAmount,
-    walletCreditAmount,
-    platformFeeAmount,
-    billingInfo: {
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-    },
-  });
+    // 1️⃣ Razorpay order = payment intent
+    const order = await razorpay.orders.create({
+      amount: grossAmount * 100, // paise
+      currency: "INR",
+      receipt: orderId,
+      payment_capture: 1, // auto capture
+    });
 
-  return res.json({
-    success: true,
-    data: {
+    // 2️⃣ Save transaction BEFORE frontend
+    await WalletTransaction.create({
+      user: user._id,
+      orderId,
       razorpayOrderId: order.id,
-      amount: order.amount,
-      currency: order.currency,
-      key: process.env.RAZORPAY_KEY_ID,
-      orderId: txn.orderId,
-    },
-  });
-};
+      grossAmount,
+      walletCreditAmount,
+      platformFeeAmount,
+      currency: "INR",
+      status: "CREATED",
+      paymentGateway: "razorpay",
+      billingInfo: {
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+      },
+    });
 
-/**
- * Handle CCAvenue response - Step 2
- * Called by CCAvenue after payment completion (success/failure)
- *
- * @route POST /api/wallet/ccavenue/response
- */
-export const ccavenueResponse = async (req, res) => {
-  console.log("──────── CCAVENUE RESPONSE HIT ────────");
-
-  try {
-    const { encResp } = req.body;
-
-    if (!encResp) {
-      console.error("❌ No encrypted response received");
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/recharge/failed?error=invalid_response`
-      );
-    }
-
-    // Decrypt response
-    const responseData = ccav.redirectResponseToJson(encResp);
-    console.log("Decrypted response:", JSON.stringify(responseData, null, 2));
-
-    const { order_id, order_status, tracking_id } = responseData;
-
-    console.log("Order ID:", order_id);
-    console.log("Order Status:", order_status);
-    console.log("Tracking ID:", tracking_id);
-
-    // Find transaction
-    const txn = await WalletTransaction.findOne({ orderId: order_id });
-
-    if (!txn) {
-      console.error("❌ Transaction not found for order:", order_id);
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/recharge/failed?error=transaction_not_found`
-      );
-    }
-
-    // Check if already processed
-    if (txn.status === "PAID") {
-      console.log("ℹ️ Transaction already processed");
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/recharge/success?order_id=${order_id}`
-      );
-    }
-
-    // Process based on status
-    if (order_status === "Success") {
-      console.log("💰 Payment SUCCESS");
-
-      // Update transaction
-      await txn.markAsPaid(responseData);
-
-      // Credit user wallet
-      const user = await User.findById(txn.user);
-      if (user) {
-        user.wallet.main += txn.walletCreditAmount;
-        await user.save();
-        console.log("✅ Wallet credited:", txn.walletCreditAmount);
-      }
-
-      console.log("──────── RESPONSE PROCESSING DONE ────────");
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/recharge/success?order_id=${order_id}&amount=${txn.walletCreditAmount}`
-      );
-    } else if (order_status === "Aborted") {
-      console.log("⚠️ Payment ABORTED by user");
-      await txn.markAsAborted(responseData);
-
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/recharge/cancelled?order_id=${order_id}`
-      );
-    } else {
-      // Failure, Invalid, Timeout, etc.
-      console.log("❌ Payment FAILED:", order_status);
-      await txn.markAsFailed(responseData);
-
-      const failureMessage = encodeURIComponent(
-        responseData.failure_message || "Payment failed"
-      );
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/recharge/failed?order_id=${order_id}&message=${failureMessage}`
-      );
-    }
-  } catch (error) {
-    console.error("🔥 CCAvenue response error:", error);
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/recharge/failed?error=processing_error`
-    );
-  }
-};
-
-export const ccavenueCancel = async (req, res) => {
-  console.log("──────── CCAVENUE CANCEL HIT ────────");
-
-  try {
-    const { encResp } = req.body;
-
-    if (encResp) {
-      const responseData = ccav.redirectResponseToJson(encResp);
-      const { order_id } = responseData;
-
-      if (order_id) {
-        const txn = await WalletTransaction.findOne({ orderId: order_id });
-        if (txn && txn.status === "CREATED") {
-          await txn.markAsAborted(responseData);
-        }
-      }
-    }
-
-    return res.redirect(`${process.env.FRONTEND_URL}/recharge/cancelled`);
-  } catch (error) {
-    console.error("🔥 CCAvenue cancel error:", error);
-    return res.redirect(`${process.env.FRONTEND_URL}/recharge/cancelled`);
+    return res.json({
+      success: true,
+      data: {
+        razorpayOrderId: order.id,
+        amount: order.amount, // paise
+        currency: order.currency,
+        key: process.env.RAZORPAY_KEY_ID,
+        orderId,
+      },
+    });
+  } catch (err) {
+    console.error("Recharge error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to initiate payment",
+    });
   }
 };
 
@@ -441,6 +340,39 @@ export const getTransactionStatus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to get transaction",
+    });
+  }
+};
+
+
+export const getRazorTransactionStatus = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user.userId;
+
+    const txn = await WalletTransaction.findOne({
+      orderId,
+      user: userId,
+    }).select("status razorpayPaymentId creditedAt");
+
+    if (!txn) {
+      return res.status(404).json({
+        success: false,
+        message: "Transaction not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        status: txn.status, // CREATED | AUTHORIZED | CAPTURED | FAILED
+      },
+    });
+  } catch (err) {
+    console.error("Transaction status error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get transaction status",
     });
   }
 };
