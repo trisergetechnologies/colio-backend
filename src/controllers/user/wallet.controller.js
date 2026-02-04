@@ -135,7 +135,10 @@ export const getTransactionHistory = async (req, res) => {
     const userId = req.user.userId;
     const { page = 1, limit = 10, status } = req.query;
 
-    const query = { user: userId };
+    const query = {
+      user: userId,
+      status: { $in: ["CAPTURED", "FAILED"] },
+    };
 
     if (status) {
       query.status = status;
