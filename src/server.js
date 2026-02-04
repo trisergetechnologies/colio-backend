@@ -8,7 +8,7 @@ import connectDB from './config/db.js';
 import { razorpayWebhook } from './controllers/public/razorpayWebhook.controller.js';
 import { startSessionBillingJob } from './jobs/sessionBilling.job.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
-import { apiRateLimit } from './middlewares/rateLimit.middleware.js';
+// import { apiRateLimit } from './middlewares/rateLimit.middleware.js';
 import apiRoutes from './routes/index.js';
 
 // Load environment variables
@@ -37,7 +37,6 @@ startSessionBillingJob();
 
 app.set('trust proxy', 1);
 // Global rate limiting
-app.use(apiRateLimit);
 
 // API routes
 app.use('/api', apiRoutes);
