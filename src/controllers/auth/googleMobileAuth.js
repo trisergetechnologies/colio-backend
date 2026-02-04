@@ -92,7 +92,7 @@ export const googleMobileAuth = async (req, res) => {
       registrationType: "google",
       role: "customer",
       avatar: avatar || null,
-      wallet: { main: 0, bonus: 0 },
+      wallet: { main: 75, bonus: 0 },
     });
 
     const tokens = await generateTokenPair(user);

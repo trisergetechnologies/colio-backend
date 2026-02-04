@@ -153,7 +153,7 @@ export const registerUser = async (req, res) => {
 
     // Initialize customer wallet
     userData.wallet = {
-      main: 0,
+      main: 75,
       bonus: 0
     };
 

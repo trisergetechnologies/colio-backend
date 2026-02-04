@@ -43,6 +43,7 @@ export const googleCallback = async (req, res) => {
         googleId: id,
         avatar: picture,
         role: "customer",
+        wallet: { main: 75, bonus: 0 },
         isEmailVerified: true,
       });
     }

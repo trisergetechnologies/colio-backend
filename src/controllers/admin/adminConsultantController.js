@@ -271,3 +271,72 @@ export const updateConsultantByAdmin = async (req, res) => {
     });
   }
 };
+
+export const uploadConsultantAvatarByAdmin = async (req, res) => {
+  try {
+    const admin = req.user;
+
+    // 🔐 Admin guard
+    if (admin.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized access',
+      });
+    }
+
+    const { consultantId } = req.body;
+
+    if (!consultantId) {
+      return res.json({
+        success: false,
+        message: 'Consultant ID is required',
+      });
+    }
+
+    if (!req.file) {
+      return res.json({
+        success: false,
+        message: 'Avatar image is required',
+      });
+    }
+
+    const consultant = await User.findById(consultantId);
+
+    if (!consultant) {
+      return res.json({
+        success: false,
+        message: 'Consultant not found',
+      });
+    }
+
+    if (consultant.role !== 'consultant') {
+      return res.json({
+        success: false,
+        message: 'User is not a consultant',
+      });
+    }
+
+    // 🔗 Build full static URL
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const avatarUrl = `${baseUrl}/uploads/consultant_avatars/${req.file.filename}`;
+
+    consultant.avatar = avatarUrl;
+    await consultant.save();
+
+    return res.json({
+      success: true,
+      message: 'Consultant avatar uploaded successfully',
+      data: {
+        consultantId: consultant._id,
+        avatar: consultant.avatar,
+      },
+    });
+  } catch (error) {
+    console.error('Upload consultant avatar error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to upload consultant avatar',
+    });
+  }
+};
