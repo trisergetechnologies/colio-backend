@@ -45,8 +45,7 @@ router.put('/password',
 // Wallet Information
 router.get('/wallet', getWalletBalance);
 
-// router.get('/transactions', getTransactionHistory);
-// router.get('/getrechargehistory', getRechargeHistory);
+
 
 // Session Management (Shared between customer & consultant)
 router.get('/sessions', getUserCommunicationSessions);
