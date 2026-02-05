@@ -147,7 +147,7 @@ export const updateProfile = async (req, res) => {
     }
 
     if (languages !== undefined) {
-      if (!Array.isArray(languages) || languages.some(lang => !['english', 'hindi'].includes(lang))) {
+      if (!Array.isArray(languages) || languages.some(lang => !['english', 'hindi','kannada', "marathi", "telugu", "bengali", "malayalam", "punjabi"].includes(lang))) {
         return res.status(200).json({
           success: false,
           message: 'Invalid languages. Only english and hindi are supported',

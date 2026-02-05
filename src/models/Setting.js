@@ -204,7 +204,7 @@ billingNotificationIntervals: {
       },
       supportedLanguages: {
         type: [String],
-        default: ['english', 'hindi'],
+        default: ['english', 'hindi','kannada', "marathi", "telugu", "bengali", "malayalam", "punjabi"],
         required: true
       },
       allowedFileTypes: {

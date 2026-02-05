@@ -231,7 +231,7 @@ class SettingsService {
       communication: {
         chatHistoryRetentionDays: -1, // Forever
         maxFileUploadSizeMB: 10,
-        supportedLanguages: ['english', 'hindi'],
+        supportedLanguages: ['english', 'hindi','kannada', "marathi", "telugu", "bengali", "malayalam", "punjabi"],
         allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'application/pdf']
       },
 

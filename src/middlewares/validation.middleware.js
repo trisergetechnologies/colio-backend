@@ -104,7 +104,7 @@ export const validationSchemas = {
     name: Joi.string().min(2).max(50).optional(),
     gender: Joi.string().valid('male', 'female', 'other').optional(),
     dateOfBirth: Joi.date().max('now').optional(),
-    languages: Joi.array().items(Joi.string().valid('english', 'hindi')).optional(),
+    languages: Joi.array().items(Joi.string().valid('english', 'hindi','kannada', "marathi", "telugu", "bengali", "malayalam", "punjabi")).optional(),
     bio: Joi.string().max(500).optional(),
     skills: Joi.array().items(Joi.string().valid(
       'active-listening', 'empathy', 'stress-management',
@@ -138,6 +138,6 @@ export const validationSchemas = {
     skills: Joi.string().optional(),
     minRating: Joi.number().min(0).max(5).default(0),
     maxRate: Joi.number().min(1).optional(),
-    language: Joi.string().valid('english', 'hindi').default('english')
+    language: Joi.string().valid('english', 'hindi','kannada', "marathi", "telugu", "bengali", "malayalam", "punjabi").default('english')
   })
 };

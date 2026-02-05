@@ -113,7 +113,7 @@ const userSchema = new mongoose.Schema(
     languages: [
       {
         type: String,
-        enum: ["english", "hindi"],
+        enum: ["english", "hindi", "kannada", "marathi", "telugu", "bengali", "malayalam", "punjabi"],
         default: ["english"],
       },
     ],
