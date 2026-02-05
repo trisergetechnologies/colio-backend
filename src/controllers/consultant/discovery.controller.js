@@ -25,7 +25,7 @@ export const getAvailableConsultants = async (req, res) => {
       skills,
       minRating = 0,
       maxRate,
-      language = 'english',
+      language,
       sortBy = 'rating' // 'rating', 'sessions', 'rate_low', 'rate_high'
     } = req.query;
 
@@ -148,7 +148,7 @@ export const quickConnect = async (req, res) => {
       skills,
       minRating = 0,
       maxRate,
-      language = 'english'
+      language
     } = req.query;
 
     const customer = await User.findById(req.user.userId).select('blockedUsers');
