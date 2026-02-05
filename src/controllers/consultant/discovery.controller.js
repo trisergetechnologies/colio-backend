@@ -154,13 +154,13 @@ export const quickConnect = async (req, res) => {
     const customer = await User.findById(req.user.userId).select('blockedUsers');
 
     // Base match conditions (same availability logic)
-    const matchStage = {
-      role: 'consultant',
-      isActive: true,
-      isVerified: true,
-      'consultantProfile.availabilityStatus': 'onWork',
-      _id: { $nin: customer.blockedUsers || [] }
-    };
+const matchStage = {
+  role: 'consultant',
+  isActive: true,
+  isVerified: true,
+  'consultantProfile.availabilityStatus': { $in: ['onWork', 'offWork', 'busy'] },
+  _id: { $nin: customer.blockedUsers || [] }
+};
 
     // Optional filters
     if (skills) {
