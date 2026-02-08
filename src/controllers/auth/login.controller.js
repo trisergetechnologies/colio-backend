@@ -7,9 +7,9 @@
 
 import User from '../../models/User.js';
 import settingsService from '../../services/settingsService.js';
-import { comparePassword } from '../../utils/password.helper.js';
-import { generateTokenPair, verifyToken, generatePasswordResetToken, verifyPasswordResetToken, extractToken } from '../../utils/token.helper.js';
 import { maskEmail, maskPhone } from '../../utils/mask.helper.js';
+import { comparePassword } from '../../utils/password.helper.js';
+import { generatePasswordResetToken, generateTokenPair, verifyPasswordResetToken, verifyToken } from '../../utils/token.helper.js';
 
 /**
  * Login user
@@ -74,6 +74,13 @@ export const loginUser = async (req, res) => {
         success: false,
         message: loginType === 'google' ? 'Google account not found' : 'Invalid credentials',
         data: null
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been deactivated. Contact admin.",
       });
     }
 

@@ -31,6 +31,8 @@ export const onboardConsultantByAdmin = async (req, res) => {
             ratePerMinuteVideo,
             ratePerMinuteChat,
 
+            bankDetails,
+
             availabilityStatus = 'offWork',
             isActive = true,
             isVerified = true
@@ -102,6 +104,16 @@ export const onboardConsultantByAdmin = async (req, res) => {
                 ratePerMinuteVideo: ratePerMinuteVideo ?? 25,
                 ratePerMinuteChat: ratePerMinuteChat ?? 10,
 
+                bankDetails: {
+                  accountHolderName: bankDetails?.accountHolderName || '',
+                  bankName: bankDetails?.bankName || '',
+                  accountNumber: bankDetails?.accountNumber || '',
+                  ifscCode: bankDetails?.ifscCode || '',
+                  upiId: bankDetails?.upiId || '',
+                  isVerified: true,
+                  verifiedAt: Date.now()
+                },
+
                 availabilityStatus,
                 wallet: {
                     available: 0,
@@ -167,6 +179,7 @@ export const updateConsultantByAdmin = async (req, res) => {
     const { consultantId } = req.params;
     const updates = req.body;
 
+
     // ================= BLOCKED FIELDS =================
     const blockedFields = [
       'avatar',
@@ -219,14 +232,29 @@ export const updateConsultantByAdmin = async (req, res) => {
       'ratePerMinute',
       'ratePerMinuteVideo',
       'ratePerMinuteChat',
-      'availabilityStatus'
+      'availabilityStatus',
+      'bankDetails'
     ];
 
     consultantFields.forEach(field => {
       if (updates[field] !== undefined) {
-        consultant.consultantProfile[field] = updates[field];
+
+      // special handling for bankDetails (nested merge)
+      if (field === 'bankDetails') {
+        consultant.consultantProfile.bankDetails = {
+          ...consultant.consultantProfile.bankDetails,
+          ...updates.bankDetails
+        };
+
+        // auto verification timestamp logic
+        if (updates.bankDetails?.isVerified === true) {
+          consultant.consultantProfile.bankDetails.verifiedAt = new Date();
+        }
+      } else {
+      consultant.consultantProfile[field] = updates[field];
       }
-    });
+    }
+  });
 
     // ================= SAVE =================
     await consultant.save();
