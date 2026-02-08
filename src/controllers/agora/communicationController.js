@@ -76,7 +76,7 @@ export const startSession = async (req, res) => {
       ratePerMinute = consultant.consultantProfile?.ratePerMinuteChat || 10;
     }
 
-    const MIN_MINUTES_TO_START = 2;
+    const MIN_MINUTES_TO_START = 1;
 
     const customerTotalBalance =
       (customer.wallet?.main || 0) + (customer.wallet?.bonus || 0);
