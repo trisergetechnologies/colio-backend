@@ -468,7 +468,7 @@ export const getSessionDetails = async (req, res) => {
         )
         .populate("endedBy", "name role");
 
-      if (!session) {
+      if (!session || session.totalDurationSeconds === 0) {
         return res.json({
           success: false,
           message: "Session not found",
@@ -482,7 +482,9 @@ export const getSessionDetails = async (req, res) => {
     }
 
     // ================= BULK FETCH =================
-    const query = {};
+    const query = {
+      totalDurationSeconds: { $gt: 0 },
+    };
 
     if (type) query.type = type;
     if (status) query.status = status;
