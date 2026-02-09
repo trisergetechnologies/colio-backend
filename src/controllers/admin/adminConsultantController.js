@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+import CommunicationSession from "../../models/CommunicationSession.js";
 import User from "../../models/User.js";
 import settingsService from "../../services/settingsService.js";
 import { hashPassword, validatePasswordStrength } from "../../utils/password.helper.js";
@@ -365,6 +367,161 @@ export const uploadConsultantAvatarByAdmin = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to upload consultant avatar',
+    });
+  }
+};
+
+
+const formatSession = (s) => {
+  const durationMinutes = Math.ceil((s.totalDurationSeconds || 0) / 60);
+
+  return {
+    sessionId: s._id,
+
+    type: s.type,
+    status: s.status,
+
+    participants: {
+      customer: s.customer,
+      consultant: s.consultant,
+    },
+
+    timeline: {
+      createdAt: toIST(s.createdAt),
+      startedAt: toIST(s.startedAt),
+      endedAt: toIST(s.endedAt),
+      lastBilledAt: toIST(s.lastBilledAt),
+    },
+
+    duration: {
+      seconds: s.totalDurationSeconds,
+      minutes: durationMinutes,
+    },
+
+    billing: {
+      ratePerMinute: s.ratePerMinute,
+      billedMinutes: s.billedMinutes,
+      billedAmount: s.billedAmount,
+      bonusUsed: s.bonusUsed,
+      isBilled: s.isBilled,
+    },
+
+    earnings: {
+      consultantEarning: s.consultantEarning,
+      systemEarning: s.systemEarning,
+    },
+
+    termination: {
+      endedBy: s.endedBy,
+      autoEnded: s.autoEnded,
+      reason: s.endReason,
+    },
+
+    agora: {
+      channelName: s.agora?.channelName,
+      conversationId: s.agora?.chatConversationId,
+    },
+
+    quality: {
+      network: s.networkQuality,
+      deviceInfo: s.deviceInfo,
+    },
+  };
+};
+
+
+
+const toIST = (date) => {
+  if (!date) return null;
+  return new Date(date).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour12: true,
+  });
+};
+
+export const getSessionDetails = async (req, res) => {
+  try {
+    const {
+      sessionId,
+      page = 1,
+      limit = 10,
+      type,
+      status,
+      customerId,
+      consultantId,
+    } = req.query;
+
+    // ================= SINGLE SESSION =================
+    if (sessionId) {
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        return res.json({
+          success: false,
+          message: "Invalid sessionId",
+        });
+      }
+
+      const session = await CommunicationSession.findById(sessionId)
+        .populate("customer", "name email phone avatar role")
+        .populate(
+          "consultant",
+          "name email phone avatar role consultantProfile"
+        )
+        .populate("endedBy", "name role");
+
+      if (!session) {
+        return res.json({
+          success: false,
+          message: "Session not found",
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: formatSession(session),
+      });
+    }
+
+    // ================= BULK FETCH =================
+    const query = {};
+
+    if (type) query.type = type;
+    if (status) query.status = status;
+    if (customerId) query.customer = customerId;
+    if (consultantId) query.consultant = consultantId;
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [sessions, total] = await Promise.all([
+      CommunicationSession.find(query)
+        .populate("customer", "name email phone avatar role")
+        .populate(
+          "consultant",
+          "name email phone avatar role consultantProfile"
+        )
+        .populate("endedBy", "name role")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      CommunicationSession.countDocuments(query),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        items: sessions.map(formatSession),
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit)),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get session details error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch session details",
     });
   }
 };

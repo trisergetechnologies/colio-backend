@@ -1,5 +1,5 @@
 import express from 'express';
-import { onboardConsultantByAdmin, updateConsultantByAdmin, uploadConsultantAvatarByAdmin } from '../../controllers/admin/adminConsultantController.js';
+import { getSessionDetails, onboardConsultantByAdmin, updateConsultantByAdmin, uploadConsultantAvatarByAdmin } from '../../controllers/admin/adminConsultantController.js';
 import { approveSettlement, createPendingSettlements, getSettlementsForAdmin, rejectSettlement } from '../../controllers/admin/adminSettlementsController.js';
 import { getSystemWalletWithLogs } from '../../controllers/admin/adminSystemWalletController.js';
 import { getUsersForAdmin } from '../../controllers/admin/adminUsersController.js';
@@ -20,6 +20,7 @@ router.put('/updateconsultant/:consultantId', updateConsultantByAdmin);
 router.post('/consultants/avatar', uploadConsultantAvatar.single('avatar'), uploadConsultantAvatarByAdmin );
 
 router.get('/getusersforadmin', getUsersForAdmin);
+router.get('/getsessiondetails', getSessionDetails);
 
 
 //Settlement Routes
