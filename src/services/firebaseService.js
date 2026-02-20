@@ -129,62 +129,95 @@ class FirebaseService {
 
   // Send incoming call notification (high priority)
   async sendCallNotification(fcmToken, callData) {
-    if (!fcmToken) {
-      throw new Error('FCM token is required');
-    }
 
-    const message = {
-      token: fcmToken,
+  if (!fcmToken) {
+    throw new Error("FCM token is required");
+  }
+
+  const message = {
+    token: fcmToken,
+
+    // ✅ KEEP notification for backward compatibility (older app versions)
+    notification: {
+      title: `📞 Incoming ${callData.callType || "Call"}`,
+      body: `${callData.customerName} is calling you...`,
+    },
+
+    // ✅ PRIMARY CONTROL via data payload (new system)
+    data: {
+      type: "incoming_call",
+
+      title: `Incoming ${callData.callType || "Call"}`,
+      body: `${callData.customerName} is calling you...`,
+
+      sessionId: callData.sessionId,
+      callType: callData.callType,
+      channelName: callData.channelName,
+
+      customerId: callData.customerId,
+      customerName: callData.customerName,
+      customerAvatar: callData.customerAvatar || "",
+
+      rtcToken: callData.rtcToken || "",
+
+      ratePerMinute: String(callData.ratePerMinute || 0),
+      estimatedMaxDurationSeconds: String(
+        callData.estimatedMaxDurationSeconds || 0
+      ),
+
+      channelId: "incoming-call",
+
+      sentAt: new Date().toISOString(),
+    },
+
+    android: {
+      priority: "high",
+
       notification: {
-        title: `📞 Incoming ${callData.callType || 'Call'}`,
-        body: `${callData.customerName} is calling you...`,
+        channelId: "incoming-call",
+
+        priority: "max",
+
+        visibility: "public",
+
+        sound: "default",
+
+        tag: callData.sessionId,
       },
-      data: {
-        type: 'incoming_call',
-        sessionId: callData.sessionId,
-        callType: callData.callType,
-        channelName: callData.channelName,
-        customerId: callData.customerId,
-        customerName: callData.customerName,
-        customerAvatar: callData.customerAvatar || '',
-        rtcToken: callData.rtcToken || '',
-        ratePerMinute: String(callData.ratePerMinute || 0),
-        estimatedMaxDurationSeconds: String(callData.estimatedMaxDurationSeconds || 0),
-        sentAt: new Date().toISOString(),
-      },
-      android: {
-        priority: 'high',
-        notification: {
-          channelId: 'incoming-call',
-          color: '#d946ef',
-          sound: 'default',
-          priority: 'max',
-          defaultSound: true,
-          defaultVibrateTimings: true,
-          visibility: 'public',
-          tag: callData.sessionId,
-          sticky: true,
+    },
+
+    apns: {
+      payload: {
+        aps: {
+          sound: "default",
+          contentAvailable: true,
         },
       },
-    };
+    },
+  };
 
-    try {
-      const response = await admin.messaging().send(message);
-      console.log('✅ Call notification sent:', response);
-      return { success: true, messageId: response };
-    } catch (error) {
-      console.error('❌ Error sending call notification:', error);
-      
-      if (
-        error.code === 'messaging/invalid-registration-token' ||
-        error.code === 'messaging/registration-token-not-registered'
-      ) {
-        return { success: false, invalidToken: true, error: error.message };
-      }
-      
-      throw error;
+  try {
+
+    const response = await admin.messaging().send(message);
+
+    console.log("✅ Call notification sent:", response);
+
+    return { success: true };
+
+  } catch (error) {
+
+    if (
+      error.code === "messaging/invalid-registration-token" ||
+      error.code === "messaging/registration-token-not-registered"
+    ) {
+      return { success: false, invalidToken: true };
     }
+
+    console.error(error);
+
+    return { success: false };
   }
+}
 
   // Send welcome notification
   async sendWelcomeNotification(fcmToken, userName) {
