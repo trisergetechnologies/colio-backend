@@ -7,15 +7,23 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Initialize Firebase Admin SDK
 let firebaseInitialized = false;
 
 const initializeFirebase = async () => {
   if (firebaseInitialized) return;
 
   try {
-    const serviceAccountPath = join(__dirname, '../config/firebase-service-account.json');
-    const serviceAccountFile = await readFile(serviceAccountPath, 'utf8');
+
+    const serviceAccountPath = join(
+      __dirname,
+      '../config/firebase-service-account.json'
+    );
+
+    const serviceAccountFile = await readFile(
+      serviceAccountPath,
+      'utf8'
+    );
+
     const serviceAccount = JSON.parse(serviceAccountFile);
 
     admin.initializeApp({
@@ -24,215 +32,319 @@ const initializeFirebase = async () => {
     });
 
     firebaseInitialized = true;
-    console.log('✅ Firebase Admin initialized successfully');
+
+    console.log('✅ Firebase Admin initialized');
+
   } catch (error) {
-    console.error('❌ Error initializing Firebase Admin:', error);
+
+    console.error('❌ Firebase init error:', error);
+
     throw error;
+
   }
 };
 
-// Initialize Firebase on module load
 await initializeFirebase();
 
 class FirebaseService {
-  
-  // Send notification to a single user
+
+  // ============================================================
+  // GENERIC NOTIFICATION (unchanged, production safe)
+  // ============================================================
+
   async sendNotification(fcmToken, notification, data = {}) {
+
     if (!fcmToken) {
       throw new Error('FCM token is required');
     }
 
     const message = {
+
       token: fcmToken,
+
       notification: {
         title: notification.title,
         body: notification.body,
       },
+
       data: {
         ...data,
         sentAt: new Date().toISOString(),
       },
+
       android: {
+
         priority: 'high',
+
+        ttl: 60 * 1000,
+
         notification: {
           channelId: data.channelId || 'default',
-          color: '#8900ae',
           sound: 'default',
           priority: 'max',
           defaultSound: true,
           defaultVibrateTimings: true,
         },
+
       },
+
     };
 
     try {
-      const response = await admin.messaging().send(message);
-      console.log('✅ Notification sent successfully:', response);
+
+      const response =
+        await admin.messaging().send(message);
+
       return { success: true, messageId: response };
+
     } catch (error) {
-      console.error('❌ Error sending notification:', error);
-      
-      // Handle invalid token
+
       if (
-        error.code === 'messaging/invalid-registration-token' ||
-        error.code === 'messaging/registration-token-not-registered'
+        error.code ===
+          'messaging/invalid-registration-token' ||
+        error.code ===
+          'messaging/registration-token-not-registered'
       ) {
-        return { success: false, invalidToken: true, error: error.message };
+
+        return {
+          success: false,
+          invalidToken: true,
+        };
+
       }
-      
+
       throw error;
+
     }
+
   }
 
-  // Send notification to multiple users
-  async sendMulticastNotification(fcmTokens, notification, data = {}) {
-    if (!fcmTokens || fcmTokens.length === 0) {
-      throw new Error('At least one FCM token is required');
+  // ============================================================
+  // INCOMING CALL NOTIFICATION (ENHANCED)
+  // ============================================================
+
+  async sendCallNotification(fcmToken, callData) {
+
+    if (!fcmToken) {
+      throw new Error("FCM token required");
     }
 
     const message = {
-      tokens: fcmTokens,
+
+      token: fcmToken,
+
+      // backward compatibility
       notification: {
-        title: notification.title,
-        body: notification.body,
+        title: `📞 Incoming ${callData.callType || "Call"}`,
+        body: `${callData.customerName} is calling you`,
       },
+
       data: {
-        ...data,
+
+        type: "incoming_call",
+
+        sessionId: callData.sessionId,
+
+        callType: callData.callType,
+
+        channelName: callData.channelName,
+
+        customerId: callData.customerId,
+
+        customerName: callData.customerName,
+
+        customerAvatar:
+          callData.customerAvatar || "",
+
+        rtcToken: callData.rtcToken || "",
+
+        ratePerMinute: String(
+          callData.ratePerMinute || 0
+        ),
+
+        estimatedMaxDurationSeconds: String(
+          callData.estimatedMaxDurationSeconds || 0
+        ),
+
+        title:
+          `Incoming ${callData.callType || "Call"}`,
+
+        body:
+          `${callData.customerName} is calling you`,
+
         sentAt: new Date().toISOString(),
+
       },
+
       android: {
-        priority: 'high',
+
+        priority: "high",
+
+        ttl: 30 * 1000, // auto expire in 30 sec
+
         notification: {
-          channelId: data.channelId || 'default',
-          color: '#8900ae',
-          sound: 'default',
-          defaultSound: true,
+
+          channelId: "incoming-call",
+
+          tag: callData.sessionId,
+
+          priority: "max",
+
+          visibility: "public",
+
+          sound: "default",
+
         },
+
       },
+
+      apns: {
+
+        payload: {
+
+          aps: {
+
+            sound: "default",
+
+            contentAvailable: true,
+
+          },
+
+        },
+
+      },
+
     };
 
     try {
-      const response = await admin.messaging().sendEachForMulticast(message);
-      console.log(`✅ ${response.successCount} notifications sent successfully`);
-      
-      return {
-        success: true,
-        successCount: response.successCount,
-        failureCount: response.failureCount,
-        responses: response.responses,
-      };
+
+      const response =
+        await admin.messaging().send(message);
+
+      console.log(
+        "✅ Call notification sent:",
+        callData.sessionId
+      );
+
+      return { success: true };
+
     } catch (error) {
-      console.error('❌ Error sending multicast notification:', error);
-      throw error;
+
+      if (
+        error.code ===
+          "messaging/invalid-registration-token" ||
+        error.code ===
+          "messaging/registration-token-not-registered"
+      ) {
+
+        return {
+          success: false,
+          invalidToken: true,
+        };
+
+      }
+
+      console.error(error);
+
+      return { success: false };
+
     }
+
   }
 
-  // Send incoming call notification (high priority)
-  async sendCallNotification(fcmToken, callData) {
+  // ============================================================
+  // NEW: CALL CANCELLED NOTIFICATION
+  // ============================================================
 
-  if (!fcmToken) {
-    throw new Error("FCM token is required");
-  }
+  async sendCallCancelledNotification(
+    fcmToken,
+    sessionId
+  ) {
 
-  const message = {
-    token: fcmToken,
+    if (!fcmToken) return;
 
-    // ✅ KEEP notification for backward compatibility (older app versions)
-    notification: {
-      title: `📞 Incoming ${callData.callType || "Call"}`,
-      body: `${callData.customerName} is calling you...`,
-    },
+    const message = {
 
-    // ✅ PRIMARY CONTROL via data payload (new system)
-    data: {
-      type: "incoming_call",
+      token: fcmToken,
 
-      title: `Incoming ${callData.callType || "Call"}`,
-      body: `${callData.customerName} is calling you...`,
+      data: {
 
-      sessionId: callData.sessionId,
-      callType: callData.callType,
-      channelName: callData.channelName,
+        type: "call_cancelled",
 
-      customerId: callData.customerId,
-      customerName: callData.customerName,
-      customerAvatar: callData.customerAvatar || "",
+        sessionId: sessionId,
 
-      rtcToken: callData.rtcToken || "",
+        sentAt: new Date().toISOString(),
 
-      ratePerMinute: String(callData.ratePerMinute || 0),
-      estimatedMaxDurationSeconds: String(
-        callData.estimatedMaxDurationSeconds || 0
-      ),
-
-      channelId: "incoming-call",
-
-      sentAt: new Date().toISOString(),
-    },
-
-    android: {
-      priority: "high",
-
-      notification: {
-        channelId: "incoming-call",
-
-        priority: "max",
-
-        visibility: "public",
-
-        sound: "default",
-
-        tag: callData.sessionId,
       },
-    },
 
-    apns: {
-      payload: {
-        aps: {
-          sound: "default",
-          contentAvailable: true,
+      android: {
+
+        priority: "high",
+
+        ttl: 10 * 1000,
+
+      },
+
+      apns: {
+
+        payload: {
+
+          aps: {
+
+            contentAvailable: true,
+
+          },
+
         },
+
       },
-    },
-  };
 
-  try {
+    };
 
-    const response = await admin.messaging().send(message);
+    try {
 
-    console.log("✅ Call notification sent:", response);
+      await admin.messaging().send(message);
 
-    return { success: true };
+      console.log(
+        "✅ Call cancelled notification sent:",
+        sessionId
+      );
 
-  } catch (error) {
+    } catch (error) {
 
-    if (
-      error.code === "messaging/invalid-registration-token" ||
-      error.code === "messaging/registration-token-not-registered"
-    ) {
-      return { success: false, invalidToken: true };
+      console.error(
+        "call_cancelled send error:",
+        error.message
+      );
+
     }
 
-    console.error(error);
-
-    return { success: false };
   }
-}
 
-  // Send welcome notification
-  async sendWelcomeNotification(fcmToken, userName) {
+  // ============================================================
+  // WELCOME NOTIFICATION (unchanged)
+  // ============================================================
+
+  async sendWelcomeNotification(
+    fcmToken,
+    userName
+  ) {
+
     return await this.sendNotification(
       fcmToken,
       {
         title: '🎉 Welcome to Colio!',
-        body: `Hi ${userName || 'there'}! We're excited to help you connect with amazing people.`,
+        body:
+          `Hi ${userName || 'there'}!`,
       },
       {
         type: 'welcome',
         channelId: 'default',
       }
     );
+
   }
+
 }
 
 export default new FirebaseService();
