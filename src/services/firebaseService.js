@@ -122,134 +122,66 @@ class FirebaseService {
   // ============================================================
   // INCOMING CALL NOTIFICATION (ENHANCED)
   // ============================================================
-
+  
   async sendCallNotification(fcmToken, callData) {
-
     if (!fcmToken) {
       throw new Error("FCM token required");
     }
 
     const message = {
-
       token: fcmToken,
-
-      // backward compatibility
-      notification: {
+      
+      // ✅ STRICTLY DATA ONLY. ALL VALUES MUST BE STRINGS.
+      data: {
+        type: "incoming_call",
+        sessionId: String(callData.sessionId || ""),
+        callType: String(callData.callType || ""),
+        channelName: String(callData.channelName || ""),
+        customerId: String(callData.customerId || ""),
+        customerName: String(callData.customerName || "Customer"),
+        customerAvatar: String(callData.customerAvatar || ""),
+        rtcToken: String(callData.rtcToken || ""),
+        ratePerMinute: String(callData.ratePerMinute || 0),
+        estimatedMaxDurationSeconds: String(callData.estimatedMaxDurationSeconds || 0),
+        // Pass title and body as data so the React Native frontend can use them
         title: `📞 Incoming ${callData.callType || "Call"}`,
         body: `${callData.customerName} is calling you`,
-      },
-
-      data: {
-
-        type: "incoming_call",
-
-        sessionId: callData.sessionId,
-
-        callType: callData.callType,
-
-        channelName: callData.channelName,
-
-        customerId: callData.customerId,
-
-        customerName: callData.customerName,
-
-        customerAvatar:
-          callData.customerAvatar || "",
-
-        rtcToken: callData.rtcToken || "",
-
-        ratePerMinute: String(
-          callData.ratePerMinute || 0
-        ),
-
-        estimatedMaxDurationSeconds: String(
-          callData.estimatedMaxDurationSeconds || 0
-        ),
-
-        title:
-          `Incoming ${callData.callType || "Call"}`,
-
-        body:
-          `${callData.customerName} is calling you`,
-
         sentAt: new Date().toISOString(),
-
       },
 
       android: {
-
         priority: "high",
-
-        ttl: 30 * 1000, // auto expire in 30 sec
-
-        notification: {
-
-          channelId: "incoming-call",
-
-          tag: callData.sessionId,
-
-          priority: "max",
-
-          visibility: "public",
-
-          sound: "default",
-
-        },
-
+        ttl: 30 * 1000, // auto expire delivery attempt in 30 sec
+        // ❌ NO 'notification' object here!
       },
 
       apns: {
-
-        payload: {
-
-          aps: {
-
-            sound: "default",
-
-            contentAvailable: true,
-
-          },
-
+        headers: {
+          "apns-priority": "10"
         },
-
+        payload: {
+          aps: {
+            // Wakes up iOS React Native JS thread in the background
+            "content-available": 1 
+          },
+        },
       },
-
     };
 
     try {
-
-      const response =
-        await admin.messaging().send(message);
-
-      console.log(
-        "✅ Call notification sent:",
-        callData.sessionId
-      );
-
+      const response = await admin.messaging().send(message);
+      console.log("✅ Call notification sent:", callData.sessionId);
       return { success: true };
-
     } catch (error) {
-
       if (
-        error.code ===
-          "messaging/invalid-registration-token" ||
-        error.code ===
-          "messaging/registration-token-not-registered"
+        error.code === "messaging/invalid-registration-token" ||
+        error.code === "messaging/registration-token-not-registered"
       ) {
-
-        return {
-          success: false,
-          invalidToken: true,
-        };
-
+        return { success: false, invalidToken: true };
       }
-
       console.error(error);
-
       return { success: false };
-
     }
-
   }
 
   // ============================================================

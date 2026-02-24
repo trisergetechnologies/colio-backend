@@ -3,3 +3,4 @@ node_modules
 .vscode
 
 /src/config/firebase-service-account.json
+temp.js
