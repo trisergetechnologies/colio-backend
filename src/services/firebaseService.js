@@ -122,7 +122,7 @@ class FirebaseService {
   // ============================================================
   // INCOMING CALL NOTIFICATION (ENHANCED)
   // ============================================================
-  
+
   async sendCallNotification(fcmToken, callData) {
     if (!fcmToken) {
       throw new Error("FCM token required");
@@ -203,7 +203,8 @@ class FirebaseService {
 
         type: "call_cancelled",
 
-        sessionId: sessionId,
+        // ✅ Cast sessionId strictly to String to ensure React Native matches it
+        sessionId: String(sessionId),
 
         sentAt: new Date().toISOString(),
 
@@ -218,12 +219,15 @@ class FirebaseService {
       },
 
       apns: {
-
+        headers: {
+          "apns-priority": "10"
+        },
         payload: {
 
           aps: {
-
-            contentAvailable: true,
+            
+            // ✅ Fix for iOS: Must use exactly "content-available": 1 to wake background thread
+            "content-available": 1,
 
           },
 

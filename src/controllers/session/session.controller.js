@@ -3,10 +3,9 @@
 // 17. GET  /api/user/session/:id          # getSessionDetails()
 // 18. POST /api/user/session/:id/end      # endSession()
 
-
 import User from '../../models/User.js';
 import CommunicationSession from '../../models/CommunicationSession.js';
-
+import firebaseService from '../../services/firebaseService.js'; // ✅ Imported to send the cancellation push
 
 export const getUserCommunicationSessions = async (req, res) => {
   try {
@@ -160,6 +159,72 @@ export const getSessionStatus = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Server error'
+    });
+  }
+};
+
+// ✅ NEW: End/Cancel Session (Fixes the Race Condition)
+export const endSession = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    // According to your route comments: /api/user/session/:id/end
+    const sessionId = req.params.id || req.params.sessionId; 
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, message: 'Session ID is required' });
+    }
+
+    // Find session and populate users so we can get FCM tokens
+    const session = await CommunicationSession.findById(sessionId)
+      .populate('consultant', 'fcmToken _id')
+      .populate('customer', 'fcmToken _id');
+
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Session not found' });
+    }
+
+    // If it's already ended, just return success
+    if (['ended', 'cancelled', 'failed'].includes(session.status)) {
+      return res.status(200).json({ success: true, message: 'Session already ended' });
+    }
+
+    // ============================================================
+    // 1. SAVE TO DATABASE FIRST
+    // ============================================================
+    const isRinging = session.status === 'initiated' || session.status === 'ringing';
+    
+    session.status = isRinging ? 'cancelled' : 'ended';
+    session.endReason = isRinging ? 'missed' : 'user_ended';
+    session.endedAt = new Date();
+    session.endedBy = userId;
+
+    await session.save(); // 🛑 WE WAIT FOR THIS TO FINISH
+
+    // ============================================================
+    // 2. THEN SEND PUSH NOTIFICATION
+    // ============================================================
+    // If the customer hangs up while it's ringing, notify the consultant to stop their phone from ringing
+    if (isRinging && session.customer._id.toString() === userId.toString()) {
+      const consultantFcmToken = session.consultant?.fcmToken;
+      if (consultantFcmToken) {
+        await firebaseService.sendCallCancelledNotification(consultantFcmToken, sessionId);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Session ended successfully',
+      data: {
+        sessionId: session._id,
+        status: session.status
+      }
+    });
+
+  } catch (error) {
+    console.error('End session error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to end session'
     });
   }
 };
