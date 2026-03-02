@@ -224,10 +224,14 @@ export const endSession = async (req, res) => {
     const { sessionId, endReason } = req.body;
     const userId = req.user.userId;
 
-    const session = await CommunicationSession.findById(sessionId);
+    const session = await CommunicationSession.findById(sessionId)
+      .populate('consultant', 'fcmToken _id')
+      .populate('customer', 'fcmToken _id');
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
     }
+    const wasRinging = session.status === 'ringing' || session.status === 'initiated';
+    const isCustomerEnding = session.customer?._id?.toString() === userId.toString();
     stopBillingTimer(sessionId);
 
     // Guard against double-ending / double-billing
@@ -267,6 +271,24 @@ export const endSession = async (req, res) => {
     }
 
     await session.save();
+
+    // If customer ends while call is still ringing, notify consultant to convert
+    // incoming-call notification into missed-call immediately.
+    if (wasRinging && isCustomerEnding) {
+      const consultantFcmToken = session.consultant?.fcmToken;
+      if (consultantFcmToken) {
+        try {
+          await firebaseService.sendCallCancelledNotification(
+            consultantFcmToken,
+            String(session._id)
+          );
+        } catch (e) {
+          console.error('❌ Failed to send call_cancelled from endSession:', e);
+        }
+      } else {
+        console.warn('⚠️ Consultant FCM token missing; call_cancelled not sent');
+      }
+    }
 
     // Update CallLog
     const callLog = await CallLog.findOne({ sessionId: session._id });
@@ -464,7 +486,9 @@ export const missedCall = async (req, res) => {
       _id: sessionId,
       $or: [{ customer: userId }, { consultant: userId }],
       status: 'ringing'
-    });
+    })
+      .populate('consultant', 'fcmToken _id')
+      .populate('customer', 'fcmToken _id');
 
     if (!session) {
       return res.status(404).json({ success: false, error: 'Session not found' });
@@ -474,6 +498,20 @@ export const missedCall = async (req, res) => {
     session.endedAt = new Date();
     session.endedBy = userId;
     await session.save();
+
+    // Notify consultant to replace incoming call with missed call.
+    // This is critical for screen-off background cases where polling may pause.
+    const consultantFcmToken = session.consultant?.fcmToken;
+    if (consultantFcmToken) {
+      try {
+        await firebaseService.sendCallCancelledNotification(
+          consultantFcmToken,
+          String(session._id)
+        );
+      } catch (e) {
+        console.error('❌ Failed to send call_cancelled from missedCall:', e);
+      }
+    }
 
     // Reset consultant availability
     await User.findByIdAndUpdate(session.consultant, {
