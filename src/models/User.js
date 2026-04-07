@@ -8,6 +8,18 @@ export const CONSULTANT_CATEGORIES = [
   "Overthinking",
 ];
 
+export const CONSULTANT_SKILLS = [
+  "active-listening",
+  "empathy",
+  "stress-management",
+  "relationship-advice",
+  "career-guidance",
+  "general-chat",
+  "anxiety-support",
+  "motivation",
+  "life-coaching",
+];
+
 const userSchema = new mongoose.Schema(
   {
     // ============= BASIC INFORMATION =============
@@ -147,17 +159,7 @@ const userSchema = new mongoose.Schema(
       skills: [
         {
           type: String,
-          enum: [
-            "active-listening",
-            "empathy",
-            "stress-management",
-            "relationship-advice",
-            "career-guidance",
-            "general-chat",
-            "anxiety-support",
-            "motivation",
-            "life-coaching",
-          ],
+          enum: CONSULTANT_SKILLS,
         },
       ],
 

@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 import CommunicationSession from "../../models/CommunicationSession.js";
-import User from "../../models/User.js";
+import User, {
+  CONSULTANT_CATEGORIES,
+  CONSULTANT_SKILLS,
+} from "../../models/User.js";
 import settingsService from "../../services/settingsService.js";
 import { hashPassword, validatePasswordStrength } from "../../utils/password.helper.js";
 
@@ -70,6 +73,27 @@ export const onboardConsultantByAdmin = async (req, res) => {
             });
         }
 
+        if (!category || !CONSULTANT_CATEGORIES.includes(category)) {
+            return res.json({
+                success: false,
+                message:
+                    'Valid listener category is required (Loneliness, Breakup, Feeling Low, Stress, Overthinking)',
+            });
+        }
+
+        let sanitizedSkills = [];
+        if (skills !== undefined && skills !== null) {
+            if (!Array.isArray(skills)) {
+                return res.json({
+                    success: false,
+                    message: 'Skills must be an array of allowed skill keys',
+                });
+            }
+            sanitizedSkills = skills.filter(
+                (s) => typeof s === 'string' && CONSULTANT_SKILLS.includes(s),
+            );
+        }
+
         // ================== PASSWORD ==================
         const hashedPassword = await hashPassword(password);
 
@@ -97,8 +121,8 @@ export const onboardConsultantByAdmin = async (req, res) => {
 
             consultantProfile: {
                 bio: bio || '',
-                category: category || 'Stress',
-                skills: skills || [],
+                category,
+                skills: sanitizedSkills,
                 onboardingScore,
                 ratingAverage: 0,
                 ratingCount: 0,
@@ -197,6 +221,28 @@ export const updateConsultantByAdmin = async (req, res) => {
     ];
 
     blockedFields.forEach(field => delete updates[field]);
+
+    if (updates.category !== undefined) {
+      if (!CONSULTANT_CATEGORIES.includes(updates.category)) {
+        return res.json({
+          success: false,
+          message:
+            'Invalid listener category. Allowed: Loneliness, Breakup, Feeling Low, Stress, Overthinking',
+        });
+      }
+    }
+
+    if (updates.skills !== undefined) {
+      if (!Array.isArray(updates.skills)) {
+        return res.json({
+          success: false,
+          message: 'Skills must be an array',
+        });
+      }
+      updates.skills = updates.skills.filter(
+        (s) => typeof s === 'string' && CONSULTANT_SKILLS.includes(s),
+      );
+    }
 
     // ================= FIND CONSULTANT =================
     const consultant = await User.findOne({
