@@ -61,7 +61,10 @@ export const getProfile = async (req, res) => {
     }
 
     if (user.role === 'consultant') {
-      responseData.consultantProfile = user.consultantProfile;
+      responseData.consultantProfile = {
+        ...user.consultantProfile.toObject(),
+        description: user.consultantProfile.bio
+      };
     }
 
     return res.status(200).json({
@@ -96,6 +99,7 @@ export const updateProfile = async (req, res) => {
       languages,
       // Consultant-specific fields
       bio,
+      category,
       skills,
       ratePerMinute
     } = req.body;
@@ -186,6 +190,18 @@ export const updateProfile = async (req, res) => {
         user.consultantProfile.skills = skills;
       }
 
+      if (category !== undefined) {
+        const validCategories = ['Loneliness', 'Breakup', 'Feeling Low', 'Stress', 'Overthinking'];
+        if (!validCategories.includes(category)) {
+          return res.status(200).json({
+            success: false,
+            message: 'Invalid category provided',
+            data: null
+          });
+        }
+        user.consultantProfile.category = category;
+      }
+
       if (ratePerMinute !== undefined) {
         if (ratePerMinute < 1 || ratePerMinute > 100) {
           return res.status(200).json({
@@ -212,6 +228,8 @@ export const updateProfile = async (req, res) => {
     if (user.role === 'consultant') {
       responseData.consultantProfile = {
         bio: user.consultantProfile.bio,
+        description: user.consultantProfile.bio,
+        category: user.consultantProfile.category,
         skills: user.consultantProfile.skills,
         ratePerMinute: user.consultantProfile.ratePerMinute
       };

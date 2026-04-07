@@ -13,6 +13,16 @@ const connectDB = async () => {
       ? process.env.MONGO_URI_PROD
       : process.env.MONGO_URI_DEV;
 
+  if (!mongoURI) {
+    const key = env === 'production' ? 'MONGO_URI_PROD' : 'MONGO_URI_DEV';
+    console.log(
+      chalk.redBright(
+        `✖ Missing ${key} in .env — backend cannot connect to MongoDB.`,
+      ),
+    );
+    process.exit(1);
+  }
+
   try {
     const conn = await mongoose.connect(mongoURI);
     await Settings.getSettings(process.env.NODE_ENV || 'development');

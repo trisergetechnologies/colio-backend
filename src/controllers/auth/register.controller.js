@@ -136,6 +136,7 @@ export const registerUser = async (req, res) => {
       const defaultRate = await settingsService.getSetting('financial.defaultConsultantRatePerMinute');
       userData.consultantProfile = {
         bio: '',
+        category: 'Stress',
         skills: [],
         ratingAverage: 0,
         ratingCount: 0,
@@ -208,7 +209,8 @@ export const registerUser = async (req, res) => {
     if (role === 'consultant') {
       responseData.consultantProfile = {
         ratePerMinute: user.consultantProfile.ratePerMinute,
-        availabilityStatus: user.consultantProfile.availabilityStatus
+        availabilityStatus: user.consultantProfile.availabilityStatus,
+        category: user.consultantProfile.category
       };
     }
 

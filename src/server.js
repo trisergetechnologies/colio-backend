@@ -17,13 +17,43 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
+function buildCorsAllowedOrigins() {
+  const origins = new Set(['https://colio.in', 'https://www.colio.in']);
+  if (process.env.NODE_ENV !== 'production') {
+    origins.add('http://localhost:3000');
+    origins.add('http://127.0.0.1:3000');
+  }
+  if (process.env.CORS_ORIGINS) {
+    process.env.CORS_ORIGINS.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean)
+      .forEach((o) => origins.add(o));
+  }
+  return origins;
+}
+
+const corsAllowedOrigins = buildCorsAllowedOrigins();
+
 // Connect to MongoDB
 connectDB();
 
 // Security middleware
 app.use(helmet());
 
-app.use(cors());
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (corsAllowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
 
 app.post("/razorpay/webhook",express.raw({ type: "application/json" }), razorpayWebhook);
 
@@ -67,7 +97,25 @@ app.get('/', (req, res) => {
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 8000;
+const PORT = Number(process.env.PORT) || 8000;
+
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      chalk.redBright(`\nPort ${PORT} is already in use — another process is listening on it.`),
+    );
+    console.error(
+      chalk.yellow('Usually this is an old "npm run dev" still running. Stop it, then start again.'),
+    );
+    console.error(chalk.gray('\nWindows PowerShell — find the PID:'));
+    console.error(chalk.cyan(`  netstat -ano | findstr :${PORT}`));
+    console.error(chalk.gray('Stop it (replace PID with the last column):'));
+    console.error(chalk.cyan('  taskkill /PID <PID> /F'));
+    console.error(chalk.gray('\nOr use a different port in .env, e.g. PORT=8001'));
+    process.exit(1);
+  }
+  throw err;
+});
 
 // Use httpServer instead of app for listening (to support Socket.io)
 httpServer.listen(PORT, () => {

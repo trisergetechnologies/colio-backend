@@ -18,6 +18,7 @@ export const getUsersForAdmin = async (req, res) => {
       search,
       isActive,
       availabilityStatus,
+      category,
       from,
       to
     } = req.query;
@@ -66,6 +67,9 @@ export const getUsersForAdmin = async (req, res) => {
 
     if (availabilityStatus) {
       filter['consultantProfile.availabilityStatus'] = availabilityStatus;
+    }
+    if (category) {
+      filter['consultantProfile.category'] = category;
     }
 
     if (search) {
@@ -131,6 +135,7 @@ function userSelectByRole(role, single = false) {
       ${base}
       consultantProfile.bio
       consultantProfile.skills
+      consultantProfile.category
       consultantProfile.ratingAverage
       consultantProfile.ratingCount
       consultantProfile.totalSessions
@@ -148,6 +153,7 @@ function userSelectByRole(role, single = false) {
   return `
     ${base}
     consultantProfile.ratingAverage
+    consultantProfile.category
     consultantProfile.totalSessions
     consultantProfile.availabilityStatus
     consultantProfile.bankDetails.isVerified

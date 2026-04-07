@@ -1,5 +1,7 @@
 import Joi from 'joi';
 
+const consultantCategories = ['Loneliness', 'Breakup', 'Feeling Low', 'Stress', 'Overthinking'];
+
 /**
  * Generic validation middleware
  * Validates request body, query, or params against Joi schema
@@ -106,6 +108,7 @@ export const validationSchemas = {
     dateOfBirth: Joi.date().max('now').optional(),
     languages: Joi.array().items(Joi.string().valid('english', 'hindi','kannada', "marathi", "telugu", "bengali", "malayalam", "punjabi")).optional(),
     bio: Joi.string().max(500).optional(),
+    category: Joi.string().valid(...consultantCategories).optional(),
     skills: Joi.array().items(Joi.string().valid(
       'active-listening', 'empathy', 'stress-management',
       'relationship-advice', 'career-guidance', 'general-chat',
@@ -136,6 +139,7 @@ export const validationSchemas = {
     page: Joi.number().min(1).default(1),
     limit: Joi.number().min(1).max(50).default(20),
     skills: Joi.string().optional(),
+    category: Joi.string().valid(...consultantCategories).optional(),
     minRating: Joi.number().min(0).max(5).default(0),
     maxRate: Joi.number().min(1).optional(),
     language: Joi.string().valid('english', 'hindi','kannada', "marathi", "telugu", "bengali", "malayalam", "punjabi").default('english')

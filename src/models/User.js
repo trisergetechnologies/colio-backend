@@ -1,5 +1,13 @@
 import mongoose from 'mongoose';
 
+export const CONSULTANT_CATEGORIES = [
+  "Loneliness",
+  "Breakup",
+  "Feeling Low",
+  "Stress",
+  "Overthinking",
+];
+
 const userSchema = new mongoose.Schema(
   {
     // ============= BASIC INFORMATION =============
@@ -130,6 +138,10 @@ const userSchema = new mongoose.Schema(
       bio: {
         type: String,
         maxlength: [500, "Bio cannot exceed 500 characters"],
+      },
+      category: {
+        type: String,
+        enum: CONSULTANT_CATEGORIES,
       },
 
       skills: [
@@ -385,6 +397,7 @@ userSchema.index({ googleId: 1 }, { sparse: true });
 userSchema.index({ referralCode: 1 }, { sparse: true });
 userSchema.index({ 'consultantProfile.availabilityStatus': 1 });
 userSchema.index({ 'consultantProfile.skills': 1 });
+userSchema.index({ 'consultantProfile.category': 1 });
 userSchema.index({ 'consultantProfile.ratingAverage': -1 });
 userSchema.index({ isActive: 1, isVerified: 1 });
 userSchema.index({ blockedUsers: 1 });

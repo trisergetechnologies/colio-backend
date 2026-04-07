@@ -25,6 +25,7 @@ export const getAvailableConsultants = async (req, res) => {
       minRating = 0,
       maxRate,
       language,
+      category,
       sortBy = "rating",
     } = req.query;
 
@@ -58,72 +59,73 @@ export const getAvailableConsultants = async (req, res) => {
     if (language) {
       query.languages = language;
     }
-
-    // ✅ CHANGED: priority-based pagination logic
-    const pageNum = Number(page);
-    const pageSize = Number(limit);
-
-    const priorityOrder = ["onWork", "busy", "offWork"];
-
-    let consultants = [];
-    let remaining = pageSize;
-    let currentSkip = (pageNum - 1) * pageSize;
-
-    for (const status of priorityOrder) {
-
-      if (remaining <= 0) break;
-
-      const statusQuery = {
-        ...query,
-        "consultantProfile.availabilityStatus": status
-      };
-
-      const count = await User.countDocuments(statusQuery);
-
-      if (currentSkip >= count) {
-        currentSkip -= count;
-        continue;
-      }
-
-      const results = await User.find(statusQuery)
-        .select("name avatar consultantProfile languages createdAt")
-        .sort({
-          "consultantProfile.ratingAverage": -1,
-          createdAt: -1,
-          _id: 1
-        })
-        .skip(currentSkip)
-        .limit(remaining)
-        .lean();
-
-      consultants.push(...results);
-
-      remaining -= results.length;
-      currentSkip = 0;
+    if (category) {
+      query["consultantProfile.category"] = category;
     }
 
-    // total count (unchanged)
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skipDocs = (pageNum - 1) * pageSize;
+
     const totalConsultants = await User.countDocuments(query);
 
-    // response format (unchanged)
+    const consultants = await User.aggregate([
+      { $match: query },
+      {
+        $addFields: {
+          _availabilityEffective: {
+            $ifNull: ["$consultantProfile.availabilityStatus", "offWork"],
+          },
+        },
+      },
+      {
+        $addFields: {
+          _availabilityRank: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$_availabilityEffective", "onWork"] }, then: 0 },
+                { case: { $eq: ["$_availabilityEffective", "busy"] }, then: 1 },
+              ],
+              default: 2,
+            },
+          },
+        },
+      },
+      {
+        $sort: {
+          _availabilityRank: 1,
+          "consultantProfile.ratingAverage": -1,
+          createdAt: -1,
+          _id: 1,
+        },
+      },
+      { $skip: skipDocs },
+      { $limit: pageSize },
+    ]);
+
     const responseData = {
-      consultants: consultants.map((consultant) => ({
-        id: consultant._id,
-        name: consultant.name,
-        avatar: consultant.avatar,
-        bio: consultant.consultantProfile.bio,
-        skills: consultant.consultantProfile.skills,
-        languages: consultant.languages,
-        ratePerMinute: consultant.consultantProfile.ratePerMinute,
-        ratePerMinuteVideo: consultant.consultantProfile.ratePerMinuteVideo,
-        ratingAverage: consultant.consultantProfile.ratingAverage,
-        ratingCount: consultant.consultantProfile.ratingCount,
-        totalSessions: consultant.consultantProfile.totalSessions,
-        availabilityStatus: consultant.consultantProfile.availabilityStatus,
-        experienceMonths: Math.floor(
-          (new Date() - consultant.createdAt) / (1000 * 60 * 60 * 24 * 30)
-        ),
-      })),
+      consultants: consultants.map((consultant) => {
+        const cp = consultant.consultantProfile || {};
+        return {
+          id: consultant._id,
+          name: consultant.name,
+          avatar: consultant.avatar,
+          bio: cp.bio,
+          description: cp.bio,
+          category: cp.category || null,
+          skills: cp.skills,
+          languages: consultant.languages,
+          ratePerMinute: cp.ratePerMinute,
+          ratePerMinuteVideo: cp.ratePerMinuteVideo,
+          ratingAverage: cp.ratingAverage,
+          ratingCount: cp.ratingCount,
+          totalSessions: cp.totalSessions,
+          availabilityStatus: cp.availabilityStatus || "offWork",
+          experienceMonths: Math.floor(
+            (new Date() - consultant.createdAt) / (1000 * 60 * 60 * 24 * 30),
+          ),
+        };
+      }),
       pagination: {
         currentPage: pageNum,
         totalPages: Math.ceil(totalConsultants / pageSize),
@@ -136,6 +138,7 @@ export const getAvailableConsultants = async (req, res) => {
         minRating: parseFloat(minRating),
         maxRate: maxRate ? parseFloat(maxRate) : null,
         language,
+        category: category || null,
         sortBy,
       },
     };
@@ -159,20 +162,17 @@ export const getAvailableConsultants = async (req, res) => {
 
 export const quickConnect = async (req, res) => {
   try {
-    const { skills, minRating = 0, maxRate, language } = req.query;
+    const { skills, minRating = 0, maxRate, language, category } = req.query;
 
     const customer = await User.findById(req.user.userId).select(
       "blockedUsers",
     );
 
-    // Base match conditions (same availability logic)
+    // Base match — do not require availabilityStatus (missing field excluded old behavior)
     const matchStage = {
       role: "consultant",
       isActive: true,
       isVerified: true,
-      "consultantProfile.availabilityStatus": {
-        $in: ["onWork", "offWork", "busy"],
-      },
       _id: { $nin: customer.blockedUsers || [] },
     };
 
@@ -198,12 +198,20 @@ export const quickConnect = async (req, res) => {
     if (language) {
       matchStage.languages = language;
     }
+    if (category) {
+      matchStage["consultantProfile.category"] = category;
+    }
 
-    // Aggregation pipeline for RANDOM 5 consultants
+    // Aggregation: compute effective availability without mutating consultantProfile
     const consultants = await User.aggregate([
       { $match: matchStage },
-
-      // Random selection
+      {
+        $addFields: {
+          _quickAvail: {
+            $ifNull: ["$consultantProfile.availabilityStatus", "offWork"],
+          },
+        },
+      },
       { $sample: { size: 5 } },
 
       // Pick only required fields
@@ -213,8 +221,10 @@ export const quickConnect = async (req, res) => {
           avatar: 1,
           languages: 1,
           createdAt: 1,
+          _quickAvail: 1,
           consultantProfile: {
             bio: 1,
+            category: 1,
             skills: 1,
             ratePerMinute: 1,
             ratingAverage: 1,
@@ -232,13 +242,15 @@ export const quickConnect = async (req, res) => {
       name: c.name,
       avatar: c.avatar,
       bio: c.consultantProfile?.bio,
+      description: c.consultantProfile?.bio,
+      category: c.consultantProfile?.category || null,
       skills: c.consultantProfile?.skills || [],
       languages: c.languages,
       ratePerMinute: c.consultantProfile?.ratePerMinute,
       ratingAverage: c.consultantProfile?.ratingAverage,
       ratingCount: c.consultantProfile?.ratingCount,
       totalSessions: c.consultantProfile?.totalSessions,
-      availabilityStatus: c.consultantProfile?.availabilityStatus,
+      availabilityStatus: c._quickAvail || "offWork",
       experienceMonths: Math.floor(
         (new Date() - new Date(c.createdAt)) / (1000 * 60 * 60 * 24 * 30),
       ),

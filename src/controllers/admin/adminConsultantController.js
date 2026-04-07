@@ -26,6 +26,7 @@ export const onboardConsultantByAdmin = async (req, res) => {
             languages,
 
             bio,
+            category,
             skills,
             onboardingScore,
 
@@ -96,6 +97,7 @@ export const onboardConsultantByAdmin = async (req, res) => {
 
             consultantProfile: {
                 bio: bio || '',
+                category: category || 'Stress',
                 skills: skills || [],
                 onboardingScore,
                 ratingAverage: 0,
@@ -143,7 +145,8 @@ export const onboardConsultantByAdmin = async (req, res) => {
                     video: consultant.consultantProfile.ratePerMinuteVideo,
                     chat: consultant.consultantProfile.ratePerMinuteChat
                 },
-                availabilityStatus: consultant.consultantProfile.availabilityStatus
+                availabilityStatus: consultant.consultantProfile.availabilityStatus,
+                category: consultant.consultantProfile.category
             }
         });
     } catch (error) {
@@ -229,6 +232,7 @@ export const updateConsultantByAdmin = async (req, res) => {
     // ================= CONSULTANT PROFILE =================
     const consultantFields = [
       'bio',
+      'category',
       'skills',
       'onboardingScore',
       'ratePerMinute',
