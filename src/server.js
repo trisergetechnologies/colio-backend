@@ -18,7 +18,11 @@ const app = express();
 const httpServer = createServer(app);
 
 function buildCorsAllowedOrigins() {
-  const origins = new Set(['https://colio.in', 'https://www.colio.in']);
+  const origins = new Set([
+    'https://colio.in',
+    'https://www.colio.in',
+    'https://atlas.colio.in',
+  ]);
   if (process.env.NODE_ENV !== 'production') {
     origins.add('http://localhost:3000');
     origins.add('http://127.0.0.1:3000');
