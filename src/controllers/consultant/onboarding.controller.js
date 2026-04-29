@@ -248,10 +248,16 @@ export const postOnboardingDocuments = async (req, res) => {
       });
     }
 
-    const filesList = req.files || [];
     const files = {};
-    for (const f of filesList) {
-      files[f.fieldname] = f;
+    if (Array.isArray(req.files)) {
+      for (const f of req.files) {
+        files[f.fieldname] = f;
+      }
+    } else if (req.files && typeof req.files === 'object') {
+      for (const [field, list] of Object.entries(req.files)) {
+        const first = Array.isArray(list) ? list[0] : list;
+        if (first) files[field] = first;
+      }
     }
 
     const map = {
@@ -272,6 +278,14 @@ export const postOnboardingDocuments = async (req, res) => {
           user.avatar = url;
         }
       }
+    }
+
+    if (Object.keys(files).length === 0) {
+      return res.status(200).json({
+        success: false,
+        message:
+          'No files received. Upload at least one document (aadhaarFront, aadhaarBack, panCard, profilePhoto).',
+      });
     }
 
     user.documents = docs;
