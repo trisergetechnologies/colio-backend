@@ -143,6 +143,7 @@ export const onboardConsultantByAdmin = async (req, res) => {
                 },
 
                 availabilityStatus,
+                applicationStatus: 'approved',
                 wallet: {
                     available: 0,
                     pending: 0,
@@ -285,7 +286,9 @@ export const updateConsultantByAdmin = async (req, res) => {
       'ratePerMinuteVideo',
       'ratePerMinuteChat',
       'availabilityStatus',
-      'bankDetails'
+      'bankDetails',
+      'applicationStatus',
+      'rejectionReason',
     ];
 
     consultantFields.forEach(field => {
@@ -575,5 +578,132 @@ export const getSessionDetails = async (req, res) => {
       success: false,
       message: "Failed to fetch session details",
     });
+  }
+};
+
+export const approveConsultant = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ success: false, message: "Unauthorized access" });
+    }
+
+    const { consultantId } = req.params;
+    const {
+      onboardingScore,
+      ratePerMinute,
+      ratePerMinuteVideo,
+      ratePerMinuteChat,
+    } = req.body;
+
+    const nums = [onboardingScore, ratePerMinute, ratePerMinuteVideo, ratePerMinuteChat];
+    if (nums.some((n) => n === undefined || n === null || Number.isNaN(Number(n)))) {
+      return res.json({
+        success: false,
+        message:
+          "onboardingScore, ratePerMinute, ratePerMinuteVideo, and ratePerMinuteChat are required",
+      });
+    }
+
+    const consultant = await User.findOne({
+      _id: consultantId,
+      role: "consultant",
+    });
+
+    if (!consultant) {
+      return res.json({ success: false, message: "Consultant not found" });
+    }
+
+    const st = consultant.consultantProfile?.applicationStatus ?? "approved";
+    if (st !== "pending_approval") {
+      return res.json({
+        success: false,
+        message: "Consultant is not pending approval",
+      });
+    }
+
+    if (!consultant.consultantProfile?.agreement?.signed) {
+      return res.json({
+        success: false,
+        message: "Host agreement has not been signed by this expert",
+      });
+    }
+
+    consultant.isActive = true;
+    consultant.isVerified = true;
+    consultant.isEmailVerified = true;
+    consultant.isPhoneVerified = true;
+    consultant.consultantProfile.applicationStatus = "approved";
+    consultant.consultantProfile.onboardingScore = Number(onboardingScore);
+    consultant.consultantProfile.ratePerMinute = Number(ratePerMinute);
+    consultant.consultantProfile.ratePerMinuteVideo = Number(ratePerMinuteVideo);
+    consultant.consultantProfile.ratePerMinuteChat = Number(ratePerMinuteChat);
+    consultant.consultantProfile.bankDetails = {
+      ...consultant.consultantProfile.bankDetails,
+      isVerified: true,
+      verifiedAt: new Date(),
+    };
+
+    await consultant.save();
+
+    return res.json({
+      success: true,
+      message: "Consultant approved",
+      data: {
+        consultantId: consultant._id,
+        name: consultant.name,
+        applicationStatus: consultant.consultantProfile.applicationStatus,
+        rates: {
+          audio: consultant.consultantProfile.ratePerMinute,
+          video: consultant.consultantProfile.ratePerMinuteVideo,
+          chat: consultant.consultantProfile.ratePerMinuteChat,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("approveConsultant error:", error);
+    return res.status(500).json({ success: false, message: "Approval failed" });
+  }
+};
+
+export const rejectConsultant = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ success: false, message: "Unauthorized access" });
+    }
+
+    const { consultantId } = req.params;
+    const { rejectionReason } = req.body;
+
+    const consultant = await User.findOne({
+      _id: consultantId,
+      role: "consultant",
+    });
+
+    if (!consultant) {
+      return res.json({ success: false, message: "Consultant not found" });
+    }
+
+    const st = consultant.consultantProfile?.applicationStatus ?? "approved";
+    if (st !== "pending_approval") {
+      return res.json({
+        success: false,
+        message: "Consultant is not pending approval",
+      });
+    }
+
+    consultant.isActive = false;
+    consultant.consultantProfile.applicationStatus = "rejected";
+    consultant.consultantProfile.rejectionReason = rejectionReason?.trim() || "";
+
+    await consultant.save();
+
+    return res.json({
+      success: true,
+      message: "Application rejected",
+      data: { consultantId: consultant._id },
+    });
+  } catch (error) {
+    console.error("rejectConsultant error:", error);
+    return res.status(500).json({ success: false, message: "Rejection failed" });
   }
 };

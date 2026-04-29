@@ -143,7 +143,10 @@ export const registerUser = async (req, res) => {
         totalSessions: 0,
         onboardingScore: 0,
         ratePerMinute: defaultRate,
+        ratePerMinuteVideo: 25,
+        ratePerMinuteChat: 10,
         availabilityStatus: 'offWork',
+        applicationStatus: 'approved',
         wallet: {
           available: 0,
           pending: 0,
@@ -152,16 +155,18 @@ export const registerUser = async (req, res) => {
       };
     }
 
-    // Initialize customer wallet
-    userData.wallet = {
-      main: 75,
-      bonus: 0
-    };
-
-    // Add new user bonus for customers
+    // Initialize wallet (customer welcome bonus; consultants start at 0)
     if (role === 'customer') {
       const newUserBonus = await settingsService.getSetting('business.newUserBonusAmount');
-      userData.wallet.bonus = newUserBonus;
+      userData.wallet = {
+        main: 75,
+        bonus: newUserBonus
+      };
+    } else {
+      userData.wallet = {
+        main: 0,
+        bonus: 0
+      };
     }
 
     // Create user

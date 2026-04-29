@@ -77,10 +77,21 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    if (!user.isActive) {
+    const consultantAppStatus =
+      user.role === 'consultant'
+        ? user.consultantProfile?.applicationStatus ?? 'approved'
+        : null;
+
+    const inactiveConsultantOnboarding =
+      user.role === 'consultant' &&
+      ['pending_profile', 'pending_approval', 'rejected'].includes(
+        consultantAppStatus
+      );
+
+    if (!user.isActive && !inactiveConsultantOnboarding) {
       return res.status(403).json({
         success: false,
-        message: "Your account has been deactivated. Contact admin.",
+        message: 'Your account has been deactivated. Contact admin.',
       });
     }
 
@@ -98,15 +109,6 @@ export const loginUser = async (req, res) => {
       return res.status(200).json({
         success: false,
         message: `Account is locked. Try again after ${lockTime} minutes.`,
-        data: null
-      });
-    }
-
-    // Check if account is active
-    if (!user.isActive) {
-      return res.status(200).json({
-        success: false,
-        message: 'Account has been deactivated. Please contact support.',
         data: null
       });
     }
@@ -145,6 +147,7 @@ export const loginUser = async (req, res) => {
       isVerified: user.isVerified,
       isEmailVerified: user.isEmailVerified,
       isPhoneVerified: user.isPhoneVerified,
+      isActive: user.isActive,
       avatar: user.avatar,
       loginType: loginType,
       ...tokens
@@ -169,8 +172,11 @@ export const loginUser = async (req, res) => {
       responseData.consultantProfile = {
         availabilityStatus: user.consultantProfile.availabilityStatus,
         ratePerMinute: user.consultantProfile.ratePerMinute,
+        ratePerMinuteVideo: user.consultantProfile.ratePerMinuteVideo,
+        ratePerMinuteChat: user.consultantProfile.ratePerMinuteChat,
         ratingAverage: user.consultantProfile.ratingAverage,
-        totalSessions: user.consultantProfile.totalSessions
+        totalSessions: user.consultantProfile.totalSessions,
+        applicationStatus: consultantAppStatus,
       };
     }
 
@@ -221,8 +227,21 @@ export const refreshToken = async (req, res) => {
 
     // Find user
     const user = await User.findById(tokenResult.payload.userId);
-    
-    if (!user || !user.isActive) {
+
+    const consultantAppStatusRefresh =
+      user?.role === 'consultant'
+        ? user.consultantProfile?.applicationStatus ?? 'approved'
+        : null;
+    const inactiveConsultantOnboardingRefresh =
+      user?.role === 'consultant' &&
+      ['pending_profile', 'pending_approval', 'rejected'].includes(
+        consultantAppStatusRefresh
+      );
+
+    if (
+      !user ||
+      (!user.isActive && !inactiveConsultantOnboardingRefresh)
+    ) {
       return res.status(200).json({
         success: false,
         message: 'User not found or inactive',

@@ -1,5 +1,13 @@
 import express from 'express';
-import { getSessionDetails, onboardConsultantByAdmin, updateConsultantByAdmin, uploadConsultantAvatarByAdmin } from '../../controllers/admin/adminConsultantController.js';
+import {
+  approveConsultant,
+  getSessionDetails,
+  onboardConsultantByAdmin,
+  rejectConsultant,
+  updateConsultantByAdmin,
+  uploadConsultantAvatarByAdmin,
+} from '../../controllers/admin/adminConsultantController.js';
+import { downloadConsultantAgreementPdf } from '../../controllers/admin/agreementController.js';
 import { approveSettlement, createPendingSettlements, getSettlementsForAdmin, rejectSettlement } from '../../controllers/admin/adminSettlementsController.js';
 import { getSystemWalletWithLogs, getTransactionsHistoryForAdmin } from '../../controllers/admin/adminSystemWalletController.js';
 import { getUsersForAdmin } from '../../controllers/admin/adminUsersController.js';
@@ -15,6 +23,9 @@ router.use(adminOnlyMiddleware);
 
 // Profile Management
 router.post('/onboard-consultant', onboardConsultantByAdmin);
+router.post('/consultants/:consultantId/approve', approveConsultant);
+router.post('/consultants/:consultantId/reject', rejectConsultant);
+router.get('/consultants/:consultantId/agreement.pdf', downloadConsultantAgreementPdf);
 router.get('/system-wallet', getSystemWalletWithLogs);
 router.put('/updateconsultant/:consultantId', updateConsultantByAdmin);
 router.post('/consultants/avatar', uploadConsultantAvatar.single('avatar'), uploadConsultantAvatarByAdmin );

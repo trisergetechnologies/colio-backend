@@ -5,6 +5,7 @@ import { authMiddleware } from '../../middlewares/auth.middleware.js';
 
 // Auth controllers
 import { registerUser } from '../../controllers/auth/register.controller.js';
+import { registerConsultant } from '../../controllers/auth/registerConsultant.controller.js';
 import {
     loginUser,
     logoutUser,
@@ -31,6 +32,12 @@ router.post('/register',
     authRateLimit,
     // validateRequest(validationSchemas.register),
     registerUser
+);
+
+router.post(
+    '/register-consultant',
+    authRateLimit,
+    registerConsultant
 );
 
 // Login & Authentication

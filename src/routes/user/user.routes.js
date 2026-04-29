@@ -51,7 +51,7 @@ router.get('/wallet', getWalletBalance);
 router.get('/sessions', getUserCommunicationSessions);
 
 
-router.post('/push-token', updatePushToken);rechargeWallet
+router.post('/push-token', updatePushToken);
 // router.post('/rechargewallet', rechargeWallet);
 
 

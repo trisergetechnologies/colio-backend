@@ -182,39 +182,55 @@ const userSchema = new mongoose.Schema(
         min: 0,
       },
 
+      applicationStatus: {
+        type: String,
+        enum: ["pending_profile", "pending_approval", "approved", "rejected"],
+      },
+
+      rejectionReason: {
+        type: String,
+        trim: true,
+      },
+
       onboardingScore: {
         type: Number,
         min: 0,
         max: 100,
-        required: function () {
-          return this.role === "consultant";
-        },
+        default: 0,
       },
 
       ratePerMinute: {
         type: Number,
         default: 15,
         min: 1,
-        required: function () {
-          return this.role === "consultant";
-        },
       },
 
       ratePerMinuteVideo: {
         type: Number,
         default: 25,
         min: 1,
-        required: function () {
-          return this.role === "consultant";
-        },
       },
 
       ratePerMinuteChat: {
         type: Number,
         default: 10,
         min: 1,
-        required: function () {
-          return this.role === "consultant";
+      },
+
+      agreement: {
+        signed: { type: Boolean, default: false },
+        signedName: { type: String, trim: true },
+        signedAt: { type: Date },
+        version: { type: String, trim: true },
+        ipAddress: { type: String, trim: true },
+        userAgent: { type: String, trim: true },
+        acknowledgments: {
+          readUnderstood: { type: Boolean, default: false },
+          voluntarily: { type: Boolean, default: false },
+          contentPolicy: { type: Boolean, default: false },
+          personalInfoLiability: { type: Boolean, default: false },
+          ageEligibility: { type: Boolean, default: false },
+          truthfulInfo: { type: Boolean, default: false },
         },
       },
 
@@ -241,7 +257,12 @@ const userSchema = new mongoose.Schema(
           type: String,
           trim: true,
           uppercase: true,
-          match: [/^[A-Z]{4}0[A-Z0-9]{6}$/, "Invalid IFSC code"],
+          validate: {
+            validator: function (v) {
+              return !v || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(String(v).toUpperCase());
+            },
+            message: "Invalid IFSC code",
+          },
         },
         upiId: {
           type: String,
@@ -300,7 +321,15 @@ const userSchema = new mongoose.Schema(
       {
         type: {
           type: String,
-          enum: ["aadhaar", "pan", "passport", "license"],
+          enum: [
+            "aadhaar",
+            "pan",
+            "passport",
+            "license",
+            "aadhaar_front",
+            "aadhaar_back",
+            "profile_photo",
+          ],
           required: true,
         },
         url: {
@@ -401,6 +430,7 @@ userSchema.index({ 'consultantProfile.availabilityStatus': 1 });
 userSchema.index({ 'consultantProfile.skills': 1 });
 userSchema.index({ 'consultantProfile.category': 1 });
 userSchema.index({ 'consultantProfile.ratingAverage': -1 });
+userSchema.index({ 'consultantProfile.applicationStatus': 1 });
 userSchema.index({ isActive: 1, isVerified: 1 });
 userSchema.index({ blockedUsers: 1 });
 

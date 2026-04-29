@@ -30,10 +30,20 @@ export const authMiddleware = async (req, res, next) => {
       });
     }
 
-    // Find user and verify active status
+    // Find user and verify active status (consultants in onboarding may be inactive)
     const user = await User.findById(tokenResult.payload.userId);
-    
-    if (!user || !user.isActive) {
+
+    const consultantAppStatus =
+      user?.role === 'consultant'
+        ? user.consultantProfile?.applicationStatus ?? 'approved'
+        : null;
+    const inactiveConsultantOnboarding =
+      user?.role === 'consultant' &&
+      ['pending_profile', 'pending_approval', 'rejected'].includes(
+        consultantAppStatus
+      );
+
+    if (!user || (!user.isActive && !inactiveConsultantOnboarding)) {
       return res.status(200).json({
         success: false,
         message: 'User not found or inactive',

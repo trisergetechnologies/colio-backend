@@ -19,6 +19,7 @@ export const getUsersForAdmin = async (req, res) => {
       isActive,
       availabilityStatus,
       category,
+      applicationStatus,
       from,
       to
     } = req.query;
@@ -70,6 +71,15 @@ export const getUsersForAdmin = async (req, res) => {
     }
     if (category) {
       filter['consultantProfile.category'] = category;
+    }
+
+    if (
+      applicationStatus &&
+      ['pending_profile', 'pending_approval', 'approved', 'rejected'].includes(
+        applicationStatus
+      )
+    ) {
+      filter['consultantProfile.applicationStatus'] = applicationStatus;
     }
 
     if (search) {
@@ -133,6 +143,7 @@ function userSelectByRole(role, single = false) {
   if (role === 'consultant') {
     return `
       ${base}
+      documents
       consultantProfile.bio
       consultantProfile.skills
       consultantProfile.category
@@ -146,17 +157,18 @@ function userSelectByRole(role, single = false) {
       consultantProfile.ratePerMinuteChat
       consultantProfile.bankDetails
       consultantProfile.wallet
+      consultantProfile.applicationStatus
+      consultantProfile.rejectionReason
+      consultantProfile.agreement
     `;
   }
 
   // mixed (both) or single user
   return `
     ${base}
-    consultantProfile.ratingAverage
-    consultantProfile.category
-    consultantProfile.totalSessions
-    consultantProfile.availabilityStatus
-    consultantProfile.bankDetails.isVerified
+    role
+    documents
+    consultantProfile
     wallet
   `;
 }
