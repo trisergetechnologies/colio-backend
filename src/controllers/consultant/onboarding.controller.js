@@ -2,10 +2,10 @@ import User, {
   CONSULTANT_CATEGORIES,
   CONSULTANT_SKILLS,
 } from '../../models/User.js';
+import { uploadImageAndGetUrl } from '../../services/mediaStorage.service.js';
 import {
   HOST_AGREEMENT_VERSION,
 } from '../../constants/hostAgreement.js';
-import path from 'path';
 
 function effectiveAppStatus(user) {
   if (user.role !== 'consultant') return null;
@@ -52,12 +52,6 @@ function upsertDoc(documents, type, url) {
     uploadedAt: new Date(),
   });
   return filtered;
-}
-
-function buildUploadUrl(req, userId, filename) {
-  const relPath = path.posix.join('consultant_documents', String(userId), filename);
-  const base = `${req.protocol}://${req.get('host')}`;
-  return `${base}/uploads/${relPath}`;
 }
 
 export const getOnboardingStatus = async (req, res) => {
@@ -272,7 +266,12 @@ export const postOnboardingDocuments = async (req, res) => {
     for (const [field, docType] of Object.entries(map)) {
       const file = files[field];
       if (file?.filename) {
-        const url = buildUploadUrl(req, userId, file.filename);
+        const url = await uploadImageAndGetUrl({
+          req,
+          file,
+          folder: `colio/consultant_documents/${userId}`,
+          fallbackPath: `consultant_documents/${userId}/${file.filename}`,
+        });
         docs = upsertDoc(docs, docType, url);
         if (field === 'profilePhoto') {
           user.avatar = url;

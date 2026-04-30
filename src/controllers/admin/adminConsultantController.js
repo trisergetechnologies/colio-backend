@@ -5,6 +5,7 @@ import User, {
   CONSULTANT_SKILLS,
 } from "../../models/User.js";
 import settingsService from "../../services/settingsService.js";
+import { uploadImageAndGetUrl } from "../../services/mediaStorage.service.js";
 import { hashPassword, validatePasswordStrength } from "../../utils/password.helper.js";
 
 export const onboardConsultantByAdmin = async (req, res) => {
@@ -399,9 +400,12 @@ export const uploadConsultantAvatarByAdmin = async (req, res) => {
       });
     }
 
-    // 🔗 Build full static URL
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const avatarUrl = `${baseUrl}/uploads/consultant_avatars/${req.file.filename}`;
+    const avatarUrl = await uploadImageAndGetUrl({
+      req,
+      file: req.file,
+      folder: "colio/consultant_avatars",
+      fallbackPath: `consultant_avatars/${req.file.filename}`,
+    });
 
     consultant.avatar = avatarUrl;
     await consultant.save();
