@@ -201,13 +201,13 @@ const userSchema = new mongoose.Schema(
 
       ratePerMinute: {
         type: Number,
-        default: 15,
+        default: 5,
         min: 1,
       },
 
       ratePerMinuteVideo: {
         type: Number,
-        default: 25,
+        default: 10,
         min: 1,
       },
 

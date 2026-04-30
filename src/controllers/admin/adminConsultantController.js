@@ -130,7 +130,7 @@ export const onboardConsultantByAdmin = async (req, res) => {
                 totalSessions: 0,
 
                 ratePerMinute: defaultAudioRate,
-                ratePerMinuteVideo: ratePerMinuteVideo ?? 25,
+                ratePerMinuteVideo: ratePerMinuteVideo ?? 10,
                 ratePerMinuteChat: ratePerMinuteChat ?? 10,
 
                 bankDetails: {

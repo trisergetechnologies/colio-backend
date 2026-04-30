@@ -66,10 +66,10 @@ export const startSession = async (req, res) => {
       });
     }
 
-    let ratePerMinute = consultant.consultantProfile?.ratePerMinute || 15;
+    let ratePerMinute = consultant.consultantProfile?.ratePerMinute || 5;
 
     if (type === 'video') {
-      ratePerMinute = consultant.consultantProfile?.ratePerMinuteVideo || 25;
+      ratePerMinute = consultant.consultantProfile?.ratePerMinuteVideo || 10;
     }
 
     if (type === 'chat') {
